@@ -1,0 +1,15 @@
+# Local OpenTofu/Terraform files
+*.tfstate
+*.tfstate.backup
+.terraform/
+.tofu/
+.terraform.lock.hcl
+
+# Credentials and local environment variables
+.env
+aws_creds
+
+# Python environment
+__pycache__/
+*.pyc
+venv/

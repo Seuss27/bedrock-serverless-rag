@@ -16,7 +16,7 @@ resource "aws_bedrockagent_knowledge_base" "rag_kb" {
     type = "OPENSEARCH_SERVERLESS"
     opensearch_serverless_configuration {
       collection_arn    = aws_opensearchserverless_collection.vector_store.arn
-      vector_index_name = "bedrock-knowledge-base-default-index"
+      vector_index_name = "personal-rag-index"
       
       # These fields must exactly match the index you create in OpenSearch
       field_mapping {

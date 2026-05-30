@@ -51,8 +51,8 @@ index_body = {
                 "dimension": 1024,
                 "method": {
                     "name": "hnsw",
-                    "engine": "nmslib",
-                    "space_type": "cosinesimil"
+                    "engine": "faiss",
+                    "space_type": "l2"
                 }
             },
             "AMAZON_BEDROCK_TEXT_CHUNK": {
@@ -67,10 +67,13 @@ index_body = {
     }
 }
 
-# 5. Create the Index
+# 5. Delete the old index if it exists, then create the new one
 try:
+    if client.indices.exists(index=index_name):
+        client.indices.delete(index=index_name)
+        print(f"Deleted existing index: '{index_name}'")
+        
     response = client.indices.create(index=index_name, body=index_body)
-    print(f"Success! Index '{index_name}' created.")
-    print(response)
+    print(f"Success! Index '{index_name}' created with FAISS engine.")
 except Exception as e:
-    print(f"Error creating index: {e}")
+    print(f"Error managing index: {e}")

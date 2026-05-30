@@ -12,8 +12,10 @@ region = os.getenv("TF_VAR_aws_region", "us-east-1") # Falls back to us-east-1 i
 host = os.getenv("OPENSEARCH_ENDPOINT") # Add to .env after first tofu apply
 index_name = "personal-rag-index"
 
+# Build the session with sso
+session = boto3.Session(profile_name="admin-sso")
 # 2. Authenticate using your active AWS CLI credentials
-credentials = boto3.Session().get_credentials()
+credentials = session.get_credentials()
 awsauth = AWS4Auth(
     credentials.access_key,
     credentials.secret_key,

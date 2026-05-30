@@ -77,7 +77,7 @@ resource "aws_iam_role_policy" "bedrock_kb_s3_policy" {
           "aoss:APIAccessAll"
         ]
         Resource = [
-          aws_opensearchserverless_collection.rag_collection.arn
+          aws_opensearchserverless_collection.vector_store.arn
         ]
       }
     ]

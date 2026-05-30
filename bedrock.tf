@@ -3,6 +3,7 @@ resource "aws_bedrockagent_knowledge_base" "rag_kb" {
   name     = "serverless-rag-kb"
   role_arn = aws_iam_role.bedrock_kb_role.arn
 
+  
   # Define the embedding model
   knowledge_base_configuration {
     type = "VECTOR"
@@ -29,7 +30,8 @@ resource "aws_bedrockagent_knowledge_base" "rag_kb" {
 
   # Ensure IAM permissions exist before attempting to create the KB
   depends_on = [
-    aws_iam_role_policy.bedrock_kb_s3_policy
+    aws_iam_role_policy.bedrock_kb_s3_policy,
+    terraform_data.init_vector_schema
   ]
 }
 

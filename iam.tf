@@ -69,6 +69,16 @@ resource "aws_iam_role_policy" "bedrock_kb_s3_policy" {
         Resource = [
           "arn:aws:bedrock:${var.aws_region}::foundation-model/amazon.titan-embed-text-v1"
         ]
+      },
+      {
+        Sid    = "OpenSearchServerlessAPIAccessAllStatement"
+        Effect = "Allow"
+        Action = [
+          "aoss:APIAccessAll"
+        ]
+        Resource = [
+          aws_opensearchserverless_collection.rag_collection.arn
+        ]
       }
     ]
   })

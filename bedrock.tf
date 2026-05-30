@@ -7,7 +7,7 @@ resource "aws_bedrockagent_knowledge_base" "rag_kb" {
   knowledge_base_configuration {
     type = "VECTOR"
     vector_knowledge_base_configuration {
-      embedding_model_arn = "arn:aws:bedrock:${data.aws_region.current.name}::foundation-model/amazon.titan-embed-text-v2:0"
+      embedding_model_arn = "arn:aws:bedrock:${var.aws_region}::foundation-model/amazon.titan-embed-text-v2:0"
     }
   }
 
@@ -29,7 +29,7 @@ resource "aws_bedrockagent_knowledge_base" "rag_kb" {
 
   # Ensure IAM permissions exist before attempting to create the KB
   depends_on = [
-    aws_iam_role_policy.bedrock_policy_attachment
+    aws_iam_role_policy.bedrock_kb_s3_policy
   ]
 }
 

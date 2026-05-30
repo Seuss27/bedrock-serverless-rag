@@ -87,7 +87,7 @@ resource "aws_opensearchserverless_access_policy" "data_access_policy" {
       Rules = [
         {
           ResourceType = "index"
-          Resource     = ["index/${aws_opensearchserverless_collection.rag_collection.name}/*"]
+          Resource     = ["index/${aws_opensearchserverless_collection.vector_store.name}/*"]
           Permission   = [
             "aoss:CreateIndex",
             "aoss:DescribeIndex",
@@ -97,7 +97,7 @@ resource "aws_opensearchserverless_access_policy" "data_access_policy" {
         },
         {
           ResourceType = "collection"
-          Resource     = ["collection/${aws_opensearchserverless_collection.rag_collection.name}"]
+          Resource     = ["collection/${aws_opensearchserverless_collection.vector_store.name}"]
           Permission   = [
             "aoss:CreateCollectionItems",
             "aoss:DescribeCollectionItems"

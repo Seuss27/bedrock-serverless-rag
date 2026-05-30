@@ -11,10 +11,10 @@ terraform {
       source  = "infisical/infisical"
       version = "~> 0.16.0"
     }
-    cloudflare = {
-      source  = "cloudflare/cloudflare"
-      version = "~> 4.0"
-    }
+    # cloudflare = {
+    #   source  = "cloudflare/cloudflare"
+    #   version = "~> 4.0"
+    # }
   }
 }
 
@@ -26,16 +26,16 @@ provider "infisical" {
 }
 
 # 3. Pull Cloudflare credentials dynamically from your free-tier Viewer workspace
-data "infisical_secrets" "cloudflare_secrets" {
-  workspace_id = var.infisical_workspace_id
-  environment  = "prod"
-  folder_path  = "/cloudflare"
-}
+# data "infisical_secrets" "cloudflare_secrets" {
+#   workspace_id = var.infisical_workspace_id
+#   environment  = "prod"
+#   folder_path  = "/cloudflare"
+# }
 
 # 4. Configure the Cloudflare Provider using Infisical values in memory
-provider "cloudflare" {
-  api_token = data.infisical_secrets.cloudflare_secrets.secrets["CF_API_TOKEN"].value
-}
+# provider "cloudflare" {
+#   api_token = data.infisical_secrets.cloudflare_secrets.secrets["CF_API_TOKEN"].value
+# }
 
 # 5. Configure the AWS Provider
 # This points directly to the short-lived SSO profile you configured in PowerShell

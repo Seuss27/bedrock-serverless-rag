@@ -67,7 +67,7 @@ resource "aws_iam_role_policy" "bedrock_kb_s3_policy" {
           "bedrock:InvokeModel"
         ]
         Resource = [
-          "arn:aws:bedrock:${var.aws_region}::foundation-model/amazon.titan-embed-text-v1"
+          "arn:aws:bedrock:${var.aws_region}::foundation-model/amazon.titan-embed-text-v2:0"
         ]
       },
       {
@@ -85,8 +85,6 @@ resource "aws_iam_role_policy" "bedrock_kb_s3_policy" {
 }
 
 # 3. OpenSearch Serverless Data Access Policy
-# This is a specialized policy *inside* OpenSearch that explicitly allows both 
-# your local terminal identity and the Bedrock service role to read/write to the vector indexes.
 resource "aws_opensearchserverless_access_policy" "data_access_policy" {
   name        = "personal-rag-data-access"
   type        = "data"
@@ -100,6 +98,8 @@ resource "aws_opensearchserverless_access_policy" "data_access_policy" {
           Resource     = ["index/${aws_opensearchserverless_collection.vector_store.name}/*"]
           Permission   = [
             "aoss:CreateIndex",
+            "aoss:DeleteIndex",
+            "aoss:UpdateIndex",
             "aoss:DescribeIndex",
             "aoss:ReadDocument",
             "aoss:WriteDocument"
@@ -110,13 +110,15 @@ resource "aws_opensearchserverless_access_policy" "data_access_policy" {
           Resource     = ["collection/${aws_opensearchserverless_collection.vector_store.name}"]
           Permission   = [
             "aoss:CreateCollectionItems",
+            "aoss:DeleteCollectionItems",
+            "aoss:UpdateCollectionItems",
             "aoss:DescribeCollectionItems"
           ]
         }
       ]
       Principal = [
         aws_iam_role.bedrock_kb_role.arn,
-        data.aws_arn.current_identity.arn # Automatically includes your active local terminal identity
+        data.aws_arn.current_identity.arn
       ]
     }
   ])

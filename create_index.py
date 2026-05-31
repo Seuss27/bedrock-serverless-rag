@@ -2,25 +2,28 @@ import boto3
 from opensearchpy import OpenSearch, RequestsHttpConnection
 from requests_aws4auth import AWS4Auth
 import os
+import sys
+import time
 from dotenv import load_dotenv
 
 # Load environment variables from the local .env file
 load_dotenv()
 
-# 1. Configuration (Replace with your actual collection endpoint)
-region = os.getenv("TF_VAR_aws_region", "us-east-1") # Falls back to us-east-1 if not found
-host = os.getenv("OPENSEARCH_ENDPOINT") # Add to .env after first tofu apply
+# 1. Configuration 
+region = os.getenv("TF_VAR_aws_region", "us-east-1") 
+host = os.getenv("OPENSEARCH_ENDPOINT") 
+if host:
+    host = host.replace("https://", "") # opensearchpy expects the raw host without the scheme
 index_name = "personal-rag-index"
 
-# Build the session with sso
-session = boto3.Session(profile_name="admin-sso")
 # 2. Authenticate using your active AWS CLI credentials
+session = boto3.Session(profile_name="admin-sso")
 credentials = session.get_credentials()
 awsauth = AWS4Auth(
     credentials.access_key,
     credentials.secret_key,
     region,
-    'aoss', # Service name for OpenSearch Serverless
+    'aoss', 
     session_token=credentials.token
 )
 
@@ -35,8 +38,6 @@ client = OpenSearch(
 )
 
 # 4. Define the Vector Index Schema
-# The dimensions MUST match the output of your chosen Bedrock embedding model.
-# Amazon Titan Text Embeddings v2 defaults to 1024 dimensions.
 index_body = {
     "settings": {
         "index": {
@@ -67,13 +68,26 @@ index_body = {
     }
 }
 
-# 5. Delete the old index if it exists, then create the new one
-try:
-    if client.indices.exists(index=index_name):
-        client.indices.delete(index=index_name)
-        print(f"Deleted existing index: '{index_name}'")
+# 5. Polling loop to handle IAM propagation delay
+max_retries = 6
+retry_delay = 15  # Wait 15 seconds between attempts
+
+for attempt in range(max_retries):
+    try:
+        print(f"Attempt {attempt + 1}: Checking OpenSearch index...")
+        if client.indices.exists(index=index_name):
+            client.indices.delete(index=index_name)
+            print(f"Deleted existing index: '{index_name}'")
+            
+        response = client.indices.create(index=index_name, body=index_body)
+        print(f"Success! Index '{index_name}' created with FAISS engine.")
+        sys.exit(0)  # Tell OpenTofu the script was 100% successful
         
-    response = client.indices.create(index=index_name, body=index_body)
-    print(f"Success! Index '{index_name}' created with FAISS engine.")
-except Exception as e:
-    print(f"Error managing index: {e}")
+    except Exception as e:
+        print(f"Attempt {attempt + 1} failed: {e}")
+        if attempt < max_retries - 1:
+            print(f"Waiting {retry_delay} seconds for AWS IAM data access policies to propagate...")
+            time.sleep(retry_delay)
+        else:
+            print("Max retries reached. The index could not be created.")
+            sys.exit(1)  # Force OpenTofu to halt with an error

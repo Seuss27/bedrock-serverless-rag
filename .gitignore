@@ -1,6 +1,7 @@
 # Local OpenTofu/Terraform files
 *.tfstate
 *.tfstate.backup
+*.tfvars
 .terraform/
 .tofu/
 .terraform.lock.hcl

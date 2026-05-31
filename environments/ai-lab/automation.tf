@@ -1,13 +1,11 @@
 resource "terraform_data" "init_vector_schema" {
   # 1. Wait for the database and security policies to exist
-  depends_on = [
-    aws_opensearchserverless_collection.vector_store,
-    aws_opensearchserverless_access_policy.data_access_policy
-  ]
+  # Wait for the module to finish provisioning
+  depends_on = [module.rag_backend]
 
   # 2. Only re-run this script if the database is destroyed and recreated
   triggers_replace = [
-    aws_opensearchserverless_collection.vector_store.id
+    module.rag_backend.collection_id
   ]
 
   # 3. Execute the Python script using your local virtual environment
@@ -17,7 +15,7 @@ resource "terraform_data" "init_vector_schema" {
 
     # Inject the variables directly into the script's environment
     environment = {
-      OPENSEARCH_ENDPOINT = aws_opensearchserverless_collection.vector_store.collection_endpoint
+      OPENSEARCH_ENDPOINT = module.rag_backend.opensearch_endpoint
       TF_VAR_aws_region   = var.aws_region
     }
   }

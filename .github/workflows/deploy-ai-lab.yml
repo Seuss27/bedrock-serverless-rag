@@ -61,6 +61,10 @@ jobs:
     defaults:
       run:
         working-directory: environments/ai-lab
+    env:
+        # This tells GitHub: "Take the value of your stored variable 
+        # and give it to OpenTofu as TF_VAR_data_source_bucket_name"
+        TF_VAR_data_source_bucket_name: ${{ vars.DATA_SOURCE_BUCKET_NAME }}
     steps:
       - uses: actions/checkout@v4
       

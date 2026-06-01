@@ -52,6 +52,12 @@ jobs:
         working-directory: environments/ai-lab
     steps:
       - uses: actions/checkout@v4
+      
+      # Explicitly initialize and ensure modules are downloaded
+      - uses: opentofu/setup-opentofu@v1
+      - name: OpenTofu Init
+        run: tofu init -get=true -upgrade
+
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'

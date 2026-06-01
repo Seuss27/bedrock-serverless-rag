@@ -38,8 +38,6 @@ provider "infisical" {
 # }
 
 # 5. Configure the AWS Provider
-# This points directly to the short-lived SSO profile you configured in PowerShell
 provider "aws" {
   region  = var.aws_region
-  profile = "admin-sso"
 }

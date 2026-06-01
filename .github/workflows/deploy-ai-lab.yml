@@ -1,0 +1,100 @@
+name: Deploy AI Lab Infrastructure
+
+on:
+  push:
+    branches: [main]
+    paths: ['environments/ai-lab/**', 'modules/**']
+  pull_request:
+    branches: [main]
+    paths: ['environments/ai-lab/**', 'modules/**']
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  security-and-linting:
+    name: Security & Linting Checks
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: environments/ai-lab
+    steps:
+      - uses: actions/checkout@v4
+      - uses: opentofu/setup-opentofu@v1
+
+      # CONFIGURE CREDENTIALS FIRST
+      # This provides the necessary OIDC tokens for the S3 backend to initialize
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
+          aws-region: us-east-1
+      
+      - name: OpenTofu Init
+        run: tofu init
+
+      - name: OpenTofu Checks
+        run: |
+          tofu fmt -check -recursive ../../
+          tofu validate
+      
+      - name: Checkov IaC Scan
+        uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: ../../modules
+          framework: terraform
+          quiet: true
+
+      - name: Python Security & Linting
+        uses: actions/setup-python@v5
+        with: {python-version: '3.11'}
+      - run: |
+          pip install ruff bandit
+          ruff check .
+          bandit -r .
+
+  opentofu-pipeline:
+    timeout-minutes: 10
+    name: OpenTofu Plan & Apply
+    needs: security-and-linting
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: environments/ai-lab
+    env:
+        # This tells GitHub: "Take the value of your stored variable 
+        # and give it to OpenTofu as TF_VAR_data_source_bucket_name"
+        TF_VAR_data_source_bucket_name: ${{ vars.DATA_SOURCE_BUCKET_NAME }}
+    steps:
+      - uses: actions/checkout@v4
+      
+      # 1. Setup Python
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+          cache-dependency-path: environments/ai-lab/requirements.txt
+      - run: pip install -r requirements.txt
+      
+      # 2. Setup OpenTofu
+      - uses: opentofu/setup-opentofu@v1
+      
+      # 3. CONFIGURE CREDENTIALS FIRST
+      # This provides the necessary OIDC tokens for the S3 backend to initialize
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
+          aws-region: us-east-1
+      
+      # 4. Now initialize. Because credentials exist, the S3 backend will work.
+      - name: OpenTofu Init
+        run: tofu init -get=true
+      
+      # 5. Plan and Apply
+      - id: plan
+        run: tofu plan -no-color
+        
+      - name: OpenTofu Apply
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: tofu apply -auto-approve
+  

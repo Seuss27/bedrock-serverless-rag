@@ -3,7 +3,7 @@ resource "aws_opensearchserverless_security_policy" "encryption_policy" {
   name        = "bedrock-encryption-policy"
   type        = "encryption"
   description = "Encryption policy for Bedrock RAG vector store"
-  
+
   policy = jsonencode({
     Rules = [
       {
@@ -21,7 +21,7 @@ resource "aws_opensearchserverless_security_policy" "network_policy" {
   name        = "bedrock-network-policy"
   type        = "network"
   description = "Network policy for Bedrock RAG vector store"
-  
+
   policy = jsonencode([
     {
       Description = "Allow Bedrock and local testing access",
@@ -35,7 +35,7 @@ resource "aws_opensearchserverless_security_policy" "network_policy" {
           Resource     = ["collection/bedrock-rag-store"]
         }
       ]
-      AllowFromPublic = true 
+      AllowFromPublic = true
     }
   ])
 }
@@ -43,10 +43,10 @@ resource "aws_opensearchserverless_security_policy" "network_policy" {
 # 3. The Serverless Collection
 resource "aws_opensearchserverless_collection" "vector_store" {
   name = "bedrock-rag-store"
-  
+
   # For Bedrock RAG, this must be set to VECTORSEARCH, not SEARCH
   type = "VECTORSEARCH"
-  
+
   # This block prevents the deployment from failing
   depends_on = [
     aws_opensearchserverless_security_policy.encryption_policy,

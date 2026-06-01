@@ -4,10 +4,10 @@ variable "aws_region" {
   default     = "us-east-1"
 }
 
-variable "infisical_workspace_id" {
-  type        = string
-  description = "The project/workspace ID from your Infisical dashboard"
-}
+# variable "infisical_workspace_id" {
+#   type        = string
+#   description = "The project/workspace ID from your Infisical dashboard"
+# }
 
 variable "data_source_bucket_name" {
   type        = string

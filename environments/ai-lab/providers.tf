@@ -7,10 +7,10 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
-    infisical = {
-      source  = "infisical/infisical"
-      version = "~> 0.16.0"
-    }
+    # infisical = {
+    #   source  = "infisical/infisical"
+    #   version = "~> 0.16.0"
+    # }
     # cloudflare = {
     #   source  = "cloudflare/cloudflare"
     #   version = "~> 4.0"
@@ -21,9 +21,9 @@ terraform {
 # 2. Configure the Infisical Provider
 # Leaving this configuration block empty tells the provider to automatically look 
 # for the standard system variables: INFISICAL_CLIENT_ID and INFISICAL_CLIENT_SECRET
-provider "infisical" {
-  host = "https://app.infisical.com"
-}
+# provider "infisical" {
+#   host = "https://app.infisical.com"
+# }
 
 # 3. Pull Cloudflare credentials dynamically from your free-tier Viewer workspace
 # data "infisical_secrets" "cloudflare_secrets" {

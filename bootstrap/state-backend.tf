@@ -94,6 +94,7 @@ resource "aws_iam_role_policy" "state_access_policy" {
           "iam:GetRole",
           "iam:ListRolePolicies",
           "iam:GetRolePolicy",
+          "iam:ListAttachedRolePolicies",
           "aoss:GetSecurityPolicy",
           "aoss:ListSecurityPolicies",
           "aoss:BatchGetCollection",

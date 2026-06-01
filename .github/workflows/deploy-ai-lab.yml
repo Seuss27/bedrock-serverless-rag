@@ -54,7 +54,6 @@ jobs:
           bandit -r .
 
   opentofu-pipeline:
-    timeout-minutes: 10
     name: OpenTofu Plan & Apply
     needs: security-and-linting
     runs-on: ubuntu-latest

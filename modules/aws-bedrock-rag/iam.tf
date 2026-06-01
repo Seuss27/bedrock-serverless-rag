@@ -89,14 +89,14 @@ resource "aws_opensearchserverless_access_policy" "data_access_policy" {
   name        = "personal-rag-data-access"
   type        = "data"
   description = "Allow Bedrock and local admin to access collection data plane"
-  
+
   policy = jsonencode([
     {
       Rules = [
         {
           ResourceType = "index"
           Resource     = ["index/${aws_opensearchserverless_collection.vector_store.name}/*"]
-          Permission   = [
+          Permission = [
             "aoss:CreateIndex",
             "aoss:DeleteIndex",
             "aoss:UpdateIndex",
@@ -108,7 +108,7 @@ resource "aws_opensearchserverless_access_policy" "data_access_policy" {
         {
           ResourceType = "collection"
           Resource     = ["collection/${aws_opensearchserverless_collection.vector_store.name}"]
-          Permission   = [
+          Permission = [
             "aoss:CreateCollectionItems",
             "aoss:DeleteCollectionItems",
             "aoss:UpdateCollectionItems",

@@ -12,7 +12,7 @@ resource "aws_s3_bucket" "tofu_state" {
 
   # Prevents accidental deletion of the state bucket
   lifecycle {
-    prevent_destroy = true 
+    prevent_destroy = true
   }
 }
 

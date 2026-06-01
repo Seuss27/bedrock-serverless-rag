@@ -3,7 +3,7 @@ resource "aws_bedrockagent_knowledge_base" "rag_kb" {
   name     = "serverless-rag-kb"
   role_arn = aws_iam_role.bedrock_kb_role.arn
 
-  
+
   # Define the embedding model
   knowledge_base_configuration {
     type = "VECTOR"
@@ -18,7 +18,7 @@ resource "aws_bedrockagent_knowledge_base" "rag_kb" {
     opensearch_serverless_configuration {
       collection_arn    = aws_opensearchserverless_collection.vector_store.arn
       vector_index_name = "personal-rag-index"
-      
+
       # These fields must exactly match the index you create in OpenSearch
       field_mapping {
         vector_field   = "bedrock-embedding"
@@ -39,7 +39,7 @@ resource "aws_bedrockagent_knowledge_base" "rag_kb" {
 resource "aws_bedrockagent_data_source" "rag_source" {
   knowledge_base_id = aws_bedrockagent_knowledge_base.rag_kb.id
   name              = "s3-document-source"
-  
+
   data_source_configuration {
     type = "S3"
     s3_configuration {

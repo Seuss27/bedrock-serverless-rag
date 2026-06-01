@@ -70,7 +70,7 @@ index_body = {
 
 # 5. Polling loop to handle IAM propagation delay
 max_retries = 6
-retry_delay = 15  # Wait 15 seconds between attempts
+retry_delay = 45  # Wait n seconds between attempts
 
 for attempt in range(max_retries):
     try:

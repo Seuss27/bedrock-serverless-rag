@@ -12,7 +12,7 @@ if not kb_id:
     exit(1)
 
 # 2. Authenticate using your active AWS CLI credentials
-session = boto3.Session(profile_name="admin-sso")
+session = boto3.Session()
 # Note: We use bedrock-agent-runtime for querying, not bedrock-agent
 bedrock_client = session.client('bedrock-agent-runtime', region_name=region)
 

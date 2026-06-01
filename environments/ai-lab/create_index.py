@@ -17,7 +17,7 @@ if host:
 index_name = "personal-rag-index"
 
 # 2. Authenticate using your active AWS CLI credentials
-session = boto3.Session(profile_name="admin-sso")
+session = boto3.Session()
 credentials = session.get_credentials()
 awsauth = AWS4Auth(
     credentials.access_key,

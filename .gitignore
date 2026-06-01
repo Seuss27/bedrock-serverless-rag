@@ -4,7 +4,7 @@
 *.tfvars
 .terraform/
 .tofu/
-.terraform.lock.hcl
+
 
 # Credentials and local environment variables
 .env

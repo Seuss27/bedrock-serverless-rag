@@ -87,34 +87,9 @@ jobs:
       
       # 5. Plan and Apply
       - id: plan
-        env:
-          TF_VAR_data_source_bucket_name: ${{ vars.DATA_SOURCE_BUCKET_NAME }}
         run: tofu plan -no-color
         
       - name: OpenTofu Apply
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: tofu apply -auto-approve
   
-  destroy-lab:
-    name: Destroy AI Lab
-    runs-on: ubuntu-latest
-    # Manual trigger setup
-    if: github.event_name == 'workflow_dispatch'
-    defaults:
-      run:
-        working-directory: environments/ai-lab
-    steps:
-    - uses: actions/checkout@v4
-    
-    - uses: opentofu/setup-opentofu@v1
-    
-    - uses: aws-actions/configure-aws-credentials@v4
-      with:
-        role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
-        aws-region: us-east-1
-        
-    - name: OpenTofu Init
-      run: tofu init -get=true
-        
-    - name: OpenTofu Destroy
-      run: tofu destroy -auto-approve

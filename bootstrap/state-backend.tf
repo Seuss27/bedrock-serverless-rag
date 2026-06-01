@@ -77,6 +77,32 @@ resource "aws_iam_role_policy" "state_access_policy" {
           "dynamodb:DeleteItem"
         ]
         Resource = aws_dynamodb_table.tofu_locks.arn
+      },
+      # Least Privilege Infrastructure Permissions
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:CreateBucket",
+          "s3:PutBucket*",
+          "s3:DeleteBucket",
+          "iam:CreateRole",
+          "iam:PutRolePolicy",
+          "iam:DeleteRolePolicy",
+          "iam:DeleteRole",
+          "iam:AttachRolePolicy",
+          "iam:DetachRolePolicy",
+          "iam:GetRole",
+          "aoss:CreateSecurityPolicy",
+          "aoss:DeleteSecurityPolicy",
+          "aoss:CreateCollection",
+          "aoss:DeleteCollection",
+          "aoss:UpdateCollection",
+          "bedrock:CreateKnowledgeBase",
+          "bedrock:DeleteKnowledgeBase",
+          "bedrock:CreateDataSource",
+          "bedrock:DeleteDataSource"
+        ],
+        Resource = "*" # This should be locked down outside of lab use
       }
     ]
   })

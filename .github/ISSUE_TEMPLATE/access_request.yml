@@ -1,0 +1,19 @@
+name: 🔐 Access / IAM Request
+description: Request a new service account, RBAC change, or secret rotation.
+title: "[Global] IAM: Grant <role> to <entity>"
+labels: ["type/access", "status/triage"]
+body:
+  - type: input
+    id: entity
+    attributes:
+      label: Target Entity
+      description: Who or what needs access? (e.g., github-actions-runner, data-science-team)
+    validations:
+      required: true
+  - type: textarea
+    id: permissions
+    attributes:
+      label: Requested Permissions
+      description: Specify the exact roles, namespaces, or resources needed.
+    validations:
+      required: true

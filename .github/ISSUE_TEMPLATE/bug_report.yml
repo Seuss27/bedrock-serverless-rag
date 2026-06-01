@@ -1,0 +1,31 @@
+name: 🐛 Infrastructure Bug / Incident
+description: Report a broken service, deployment failure, or misconfiguration.
+title: "[Env] Component: Brief description of the issue"
+labels: ["type/bug", "status/triage"]
+body:
+  - type: dropdown
+    id: environment
+    attributes:
+      label: Target Environment
+      description: Which environment is experiencing this issue?
+      options:
+        - Production
+        - Staging
+        - Development
+        - Global/Platform
+    validations:
+      required: true
+  - type: textarea
+    id: symptoms
+    attributes:
+      label: Symptoms & Impact
+      description: What is failing? How is this impacting the system or users?
+      placeholder: "e.g., The ingress controller is returning 502 Bad Gateway for all /api routes."
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs or Error Messages
+      description: Paste relevant logs, metric graphs, or command outputs.
+      render: shell

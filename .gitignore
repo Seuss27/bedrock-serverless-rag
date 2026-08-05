@@ -17,3 +17,13 @@ venv/
 
 # Local helper scripts
 Invoke-Tofu.ps1
+
+# way-of-working dev-workflow state.
+# `.ai/next-steps.md` and `.ai/project.yml` ARE tracked -- they are the shared cursor and
+# the plugin contract. These two are per-machine session state, not shared record.
+.ai/state.json
+.ai/archive/
+
+# Claude Code local overrides. `.claude/settings.json` IS tracked -- it pins the
+# way-of-working plugin version for everyone working in this repo.
+.claude/settings.local.json

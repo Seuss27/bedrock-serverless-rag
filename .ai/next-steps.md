@@ -6,21 +6,23 @@ Regenerate this at the end of every working session.
 
 ## Now
 
-**SHIPPED, NOT MERGED — awaiting an adversarial review pass (see the section below).**
+**`awaiting_review` — the plan is shipped as PR #18 and deliberately NOT merged.**
 
-**S0 (governance and repository baseline) is the active frontier** — `planning`. The plan is
-**written and critically reviewed**; nothing in it has been executed. The next pass is
-**implementation**, and it changes live GitHub state (a ruleset, merge settings, labels), so
-it wants **Sonnet / coder** — with the human present for the three tasks `git revert` cannot
-undo.
+The next session is a **cold-context adversarial review of the plan itself**, run as
+**Opus / architect**. It is *not* S0 implementation. Read the reviewer section immediately
+below before anything else.
 
-⚠️ **Sequencing fact that must not be lost:** S0-T4 (`pr-title` workflow) must **merge
-before** S0-T1 (the ruleset) executes. Requiring a check whose workflow does not exist leaves
-every PR permanently pending — including the PR that would add the workflow. BR-D9,
-roadmap § 6.
+**After** the review and the merge decision, S0 (governance baseline) becomes the frontier and
+switches to **Sonnet / coder** — with the human present for the three tasks `git revert`
+cannot undo.
 
-**Sprint order is now:** `S0` → `ST` (org transfer) → `S1` → `S2` → `S3` → `S4` → `S5` → `S6`,
-with `SD` (devcontainer) in parallel from any point after S0.
+⚠️ **Sequencing fact that must not be lost, for whenever S0 does start:** S0-T4 (`pr-title`
+workflow) must **merge before** S0-T1 (the ruleset) executes. Requiring a check whose workflow
+does not exist leaves every PR permanently pending — including the PR that would add the
+workflow. BR-D9, roadmap § 6.
+
+**Sprint order:** `S0` → `ST` (org transfer) → `S1` → `S2` → `S3` → `S4` → `S5` → `S6`, with
+`SD` (devcontainer) in parallel from any point after S0.
 
 
 ## ⚠ READ FIRST IF YOU ARE THE ADVERSARIAL REVIEWER

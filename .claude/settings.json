@@ -9,7 +9,8 @@
     }
   },
   "enabledPlugins": {
-    "way-of-working@claude-workbench": true
+    "way-of-working@claude-workbench": true,
+    "aws-core@claude-plugins-official": true
   },
   "permissions": {
     "deny": [

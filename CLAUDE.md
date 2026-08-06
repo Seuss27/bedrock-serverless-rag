@@ -227,6 +227,17 @@ never in a committed `.tf` or `.tfvars`.
 A real `plan`/`apply` needs SSO credentials and the S3 backend; it does not run cleanly from a
 bare checkout by design.
 
+**Git Bash's `gpg` is not the `gpg` git uses.** Git Bash resolves a bare `gpg` command to its
+own bundled `/usr/bin/gpg`, which has an **empty keyring** — running `gpg --list-secret-keys`
+or a manual `gpg --clearsign` there to debug commit signing proves nothing about what `git`
+actually does. `git` (and PowerShell) resolve to the real Windows GnuPG install instead
+(`gpg.exe` under `Program Files\GnuPG\bin`), which holds the key `user.signingkey` points at.
+If commit signing needs debugging, invoke that binary explicitly or just retry the real
+`git commit` — don't diagnose from a bare `gpg` call in Git Bash. Separately, if the
+workstation has more than one secret key, a manual `gpg` command with no `-u` picks GnuPG's
+own default key, which is not necessarily the one `git` is configured to sign with — a
+mismatch there is not evidence of misconfiguration.
+
 ## Pointers (load on demand)
 
 - **`.ai/next-steps.md`** — the live cursor: current sprint/task, next action, which model.

@@ -2,6 +2,24 @@
 
 # S6 — Documentation and operational readiness
 
+> **⚠ Reshaped 2026-08-05 by BR-D23.**
+>
+> - **T1 (README): keep.** Issue #8 is real, and the current README actively instructs a reader
+>   to provision the exact credential F52 says to revoke. ⚠️ **S0 now deletes those three README
+>   lines early** as part of the F53 deletion — this task is the full rewrite, not the first
+>   time the file is touched.
+> - **T2: cut to TWO runbooks** — `teardown.md` (BR-D20 makes teardown the primary operating
+>   procedure) and `break-glass.md` (the one procedure where being wrong costs most). **Cut**
+>   `ingest.md` and `reindex.md` (operations never performed, on a corpus that does not exist)
+>   and `incident-injection.md` (it depends on S4-T2's alarm, which BR-D23 cut). This task's own
+>   criterion — *"every command has been executed at least once"* — is expensive in exact
+>   proportion to the runbook count, which is the argument for cutting three of five.
+> - **T3 (cost control): MOVED EARLIER, to S0.** Nothing remains here. *(The AOSS capacity-limit
+>   half is dead — `aws_opensearchserverless_account_settings` does not exist; see § 5.1.)*
+> - **T4/T5: MERGE.** BR-D13 is resolved and ST executes the transfer, so T4 is now a
+>   **confirmation pass**, not a branch on an undecided question. Its body still branches — read
+>   it as confirmation only.
+
 **Sprint Goal:** Make the repo's prose true again, give the system the operational documents
 it has never had (runbooks, cost control, teardown), and close the two open governance
 questions.

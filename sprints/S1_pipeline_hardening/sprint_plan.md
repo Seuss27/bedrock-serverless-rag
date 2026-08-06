@@ -2,6 +2,28 @@
 
 # S1 — Pipeline hardening
 
+> **⚠ Reshaped 2026-08-05 by BR-D23 — thinned, and re-sequenced behind `MW`.**
+>
+> - **`MW` now runs before this sprint.** The original order had S1 building an Environment
+>   gate, a saved-plan apply, seven required checks and a plan-summarizer **around an apply that
+>   had never once succeeded** — and this sprint's own Risks section conceded it: *"a plan job
+>   that goes green here proves the **job** works, not that the plan is accurate."* `MW` fixes
+>   that first. Every criterion here that reads plan output is now meaningful.
+> - **`iac-diff-guard` is CUT.** The plan itself declares it bypassable and forbids making it
+>   required, so its entire value is a comment — bought at a CI minute on every PR, forever.
+>   **The requirement moves to the PR template.**
+> - **`dependency-audit` must not be added as a required check** when S5 lands (BR-D23). Run it;
+>   do not gate on it. A new upstream CVE turning `main` red, on a repo designed to sit
+>   destroyed with nobody on call, is the wrong trade.
+> - **⚠️ `tofu-plan-main` is blocked on F56 and must not be unblocked the obvious way.** The
+>   upstream plan role trusts **only** `repo:<org>/<repo>:pull_request`, so a `push`-triggered
+>   job **can never assume it**. ST-T2 step 4 decides between adding an `extra_oidc_subjects`
+>   equivalent upstream and dropping `tofu-plan-main` entirely. **Do not point it at
+>   `vars.AWS_OIDC_ROLE_ARN`** — that is an apply-capable role on push to `main` with no
+>   `environment:` gate, i.e. **F13 restored in the sprint that closes it**.
+> - **F13 is now rated High, not Critical** (BR-D24) — on double-counting alone. That is a
+>   severity correction, **not** a licence to deprioritise T5.
+
 **Sprint Goal:** Stop `main` from applying to AWS unreviewed, make what applies be what was
 planned, and turn the advisory scanners into real gates. At the end of this sprint, an
 infrastructure change reaches AWS only after a PR, a plan a human read, and an explicit

@@ -2,6 +2,33 @@
 
 # S5 — Python quality and supply chain
 
+> **⚠ Reshaped 2026-08-05 by BR-D23. This sprint is CUT HARD — to four items, not a
+> supply-chain programme.** The subject is **158 lines of Python across two scripts**, one of
+> which runs once at apply and one of which blocks on `input()`. Against that, this plan
+> proposed `pyproject.toml`, five hatch environments, a hash-pinned lockfile with
+> `--require-hashes`, pip-audit, a CycloneDX SBOM, bandit, ruff with five rule families, a
+> `tests/` tree, a 3.11→3.12 migration, and **four new required CI checks**.
+>
+> **KEEP exactly these four:**
+> 1. **F29 — the BOM strip.** One minute, and the BOM is live.
+> 2. **F31 — the `except Exception: print(e)` fix.** A genuine BR-D4 disclosure into a public
+>    log. ⚠️ **`MW-T3` fixes this early**, since it already opens `create_index.py`; mark it
+>    closed-early here rather than doing it twice. `test_rag.py`'s copy still needs doing.
+> 3. **F32 — rename `test_rag.py` → `query_rag.py`.** A real pytest-collection hazard on a file
+>    that blocks on `input()`.
+> 4. **One test** — the index-schema / field-mapping contract test this plan itself names as
+>    highest-value. **Budget for the harness, not just the test:** "exactly one test" still needs
+>    pytest present and runnable, which is most of the setup cost. That is accepted.
+>
+> **CUT:** the SBOM (no consumer, no distributable); `dependency-audit` **as a required check**
+> (run it, do not gate on it); hatch's five environments (no package, no build backend); the
+> 3.11→3.12 migration (convention conformance, zero risk reduction). **That removes 4 of the 12
+> target required checks.**
+>
+> **Dependencies changed:** the header below says "S4-T4 must be merged first" — that task
+> split, and the half that matters here (`create_index.py`'s rewrite) is now **`MW`**. **SD is
+> deferred and must NOT gate this sprint.**
+
 **Sprint Goal:** Give the Python half of this repo the same deterministic gate the IaC half
 has: a real project definition, pinned and audited dependencies, an SBOM, lint and security
 rules that match the Global Conventions, and the first tests this repo has ever had.

@@ -2,6 +2,34 @@
 
 # S0 — Governance and repository baseline
 
+> **⚠ Reshaped 2026-08-05 by BR-D23 — this sprint GAINS two items pulled forward.** Both are
+> cheap, both were scheduled far too late, and neither touches identity.
+>
+> - **Task 7 (new): delete the Infisical scaffolding** — the *deletion* half of **S3-T8** /
+>   **F53**. The commented-out provider block, the `infisical_secrets` data source, the
+>   Cloudflare provider it fed, `var.infisical_workspace_id`, and the three `README.md` lines
+>   that tell a reader to provision `INFISICAL_CLIENT_ID`/`_SECRET` — i.e. **exactly the
+>   credential F52 says to revoke**. Pure deletion, zero apply risk, and it closes the actively
+>   harmful half of F53 seven sprints early. *(The SSM canary half did NOT come with it — that
+>   moved upstream to `glunk-works/global-bootstrap`; see roadmap § 9.5.)*
+> - **Task 8 (new): the budget** — was **S6-T3**, scheduled ninth despite that task stating in
+>   its own words that an environment left running is *"the most likely real-world loss this
+>   project will ever produce — larger in expectation than any finding in § 3.4."* Take the
+>   `aws_budgets_budget` with 50/80/100 % notifications driven by a variable, plus
+>   `docs/cost.md`. **Do NOT take the AOSS capacity-limit half** —
+>   `aws_opensearchserverless_account_settings` **does not exist under any spelling** (provider
+>   issue `hashicorp/terraform-provider-aws#41245`, open since 2025-02-05); a capacity limit is
+>   console/CLI-only. **The notification email is a variable and is never committed** — an
+>   address in a public repo is spam bait and PII.
+> - **F54's one-line `.gitignore` fix belongs in Task 5** and should not wait: `.env` → `.env*`
+>   plus `!.env.example`, and add `tfplan`, `plan.json` (S1-T4 creates both by those exact
+>   names) and `.venv/` (`venv/` does not match it — `environments/ai-lab/.venv/` is ignored
+>   today only because `python -m venv` writes its own `.gitignore` inside it).
+>
+> **Neither new task changes this sprint's "no `.tf`, no AWS resource" claim in spirit, but the
+> budget breaks it in fact** — it is the first AWS resource S0 creates. Say so in the PR body
+> rather than letting the header quietly become false.
+
 **Sprint Goal:** Make every subsequent control enforceable. Install branch protection on
 `main`, fix the merge settings that would render the PR-title gate decorative, and align the
 issue/label taxonomy with the Global Conventions. **No `.tf` file and no AWS resource is

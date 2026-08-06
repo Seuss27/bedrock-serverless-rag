@@ -2,6 +2,22 @@
 
 # S4 — RAG security
 
+> **⚠ Reshaped 2026-08-05 by BR-D23. This sprint is MERGED WITH S3 and cut.** Read this banner
+> before any task body below.
+>
+> | Task | Outcome |
+> | --- | --- |
+> | **T1** Bedrock Guardrail | **Keep, but demoted from headline to a task.** Today the only `PutObject` principal and the only query consumer are the same person, so the live threat model is "the operator can influence the operator". ⚠️ **The demotion does NOT cut its tripwire** — BR-D11's *"revisit before any second consumer or any non-public source document"* and `CLAUDE.md`'s *"no new retrieval path before the Guardrail lands without recording why"* both stand as written constraints. |
+> | **T2** Invocation logging + CloudTrail + alarm | **CUT — for a BLAST-RADIUS reason, not proportionality.** `aws_bedrock_model_invocation_logging_configuration` is a **per-region singleton**: provisioning it takes over Bedrock logging for the **entire shared AWS account**, the one holding `global-bootstrap`'s state and bounty-infra's findings archive. **The future argument "we have real prompts now, let's log them" does not unblock this** — the collision is exactly as bad then. If ever wanted, it is a `global-bootstrap` deliverable configured once for the account. See roadmap § 5.1. |
+> | **T3** `inclusion_prefixes` + prefix deny | **Keep** — the cheapest real control on TB3, and more durable than the guardrail. ⚠️ Note `vector_ingestion_configuration` is **Forces new resource**: this replaces the data source. Free under BR-D20; say so in the PR body so it is not read as a mistake. |
+> | **T4** Remove the destructive/non-portable index bootstrap | **SPLIT.** The **retry fix (F46) moved to `MW-T3`** — it is what makes the first real cycle diagnosable instead of a twelve-minute silent loop. The **destructive-delete guard (F23) stays here**: it costs nothing today (the index is empty, BR-D20) and is a forward-looking rule under BR-D10. |
+> | **T5** Modernize the generation path | **Keep the variable extraction** — the two independently-declared embedding-model ARNs are a genuine trap, and changing the embedding model changes the required index `dimension` as one atomic change. **Cut the dedicated query IAM role** — the query path is an interactive script the operator runs under their own SSO session. ⚠️ Its *"add an IAM role **or policy**"* wording must not be read as licence to add a **managed** policy: ST-T2b's blanket `Deny` on `iam:CreatePolicyVersion` means workload policies must stay **inline**. |
+>
+> **Dependencies changed:** the header below names "S2-T1" and "S2-T6". Both moved — this sprint
+> now depends on **`MW`** (which carries them, plus the F55 gate). `PROMPT_ATTACK` is
+> **input-only**; verify `output_strength` against live provider behaviour at implementation
+> rather than assuming symmetry.
+
 **Sprint Goal:** Put controls on the retrieval-augmented path itself: a guardrail between
 hostile document content and the model, an audit trail of what was asked and retrieved,
 bounded ingestion, and no destructive data-plane operation reachable from `tofu apply`.

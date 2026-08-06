@@ -2,6 +2,29 @@
 
 # S3 — Data-plane and IaC posture
 
+> **⚠ Reshaped 2026-08-05 by BR-D23. This sprint is MERGED WITH S4 and cut to roughly half.**
+> Read this banner before any task body below — several tasks are cut or moved, and the bodies
+> were not rewritten.
+>
+> | Task | Outcome |
+> | --- | --- |
+> | **T1** VPC-restrict the collection | **Cut the VPC work.** "Collection stays public, record **BR-D16**" is now the **DEFAULT** outcome, not a fallback after a research task. Keep the dashboard half. |
+> | **T2** Harden the S3 source bucket | **Keep the public-access block and the TLS-only deny** (~15 lines, structural, genuine). **Cut the dedicated log bucket** and **cut versioning**. |
+> | **T3** State backend | **Superseded already** — delete the retained text rather than leave 15 lines a coder can execute by accident. See roadmap § 9.4 for F8's carried-forward half. |
+> | **T4** Customer-managed KMS key | **CUT.** |
+> | **T5** Tag every resource | **Keep** — ten lines, and cost attribution is real on OCU-hour billing. |
+> | **T6** Parameterize names | **Folded into `MW-T1`.** The original conceded *"doing it during the rebuild costs nothing at all"*; doing it separately buys a second replacement cycle for nothing. |
+> | **T7** Provider versions + backend locking | **Keep**, sequenced **after S2-T4**, which changes the backend. ⚠️ **BR-D22 amended the locking half: `use_lockfile` is NOT adopted and `dynamodb_table` stays.** |
+> | **T8** Remove Infisical + SSM pilot | **SPLIT.** The Infisical deletion moved **earlier, to S0**. The SSM canary moved **upstream** to `glunk-works/global-bootstrap` (roadmap § 9.5). Nothing of T8 remains here. |
+>
+> **Dependencies changed:** this sprint now depends on **`MW`**, not on "S2-T1", and the
+> dependency text below still names the old task and says *"reconciles state by import"* —
+> **BR-D19 is REVERSED**; reconciliation is teardown-and-rebuild, and it happens in `MW`.
+>
+> **⚠️ T2's `force_destroy` guidance:** `force_destroy` stays **`true`** (BR-D20 reversal). If
+> any acceptance criterion below ships a variable `default = false`, it contradicts its own task
+> body and would re-wedge `tofu destroy` — the criterion is wrong, not the body.
+
 **Sprint Goal:** Close the storage and network gaps around the document corpus and the
 vector store, and make the IaC describe its own names instead of repeating them as string
 literals.

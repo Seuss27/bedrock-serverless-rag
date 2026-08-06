@@ -89,7 +89,12 @@ prompt context, to `anthropic.claude-3-haiku-20240307-v1:0`.
 
 1. **bounty-infra's findings archive** — third-party vulnerability data, the most restricted
    asset any glunk-works repo holds. Not this repo's, but reachable from this repo's CI role
-   via F1 + F47.
+   via F1 + F47. **The asset is two resources, not one: the findings *bucket* and the KMS
+   *key* that encrypts it.** They must never be protected asymmetrically — the bucket carries
+   confidentiality, but the *durability* of every object rests on the key, which is a
+   different resource in a different service, so an `s3:`-scoped control does not constrain a
+   `kms:` action against it (**F58**). Any Deny, any scan, any review criterion that names one
+   names both.
 2. The **AWS account** itself (reachable via TB1 + F1, and via four sibling roles + F41).
 3. The **document corpus** and its embeddings — the chunk text is stored in cleartext in the
    vector store and is the thing the system exists to protect (TB4).
@@ -110,12 +115,27 @@ be revisited before a second consumer or any non-public source document.
 Severity is *this repo's* risk, not a generic CVSS. **Critical** = an unauthenticated or
 lightly-authenticated path to account compromise or total data loss.
 
+**The multiplier rule (BR-D24).** Several findings are not themselves vulnerabilities — they
+are conditions that change what another finding is worth. **A multiplier is rated at the
+severity of the worst outcome it enables.** This is stated once, here, because the inventory
+previously applied it two ways: **F17** was Critical *because* it is "the multiplier on F13
+and F1", while **F47** was High on the opposite reasoning that a multiplier ranks one below
+what it multiplies. Both cannot be the rule. The first reading wins, which makes F47 Critical.
+
+**Severity is not schedule.** The ordering in § 5 is deliberately not by severity (see the
+rationale there), and **F51** is the sharpest case: it is a *functional* defect — the project
+cannot perform the create/destroy/verify cycle it exists to perform — which this scale has no
+band for, since the scale measures risk. It is rated **High** and scheduled **first among
+non-blast-radius work**, in the `MW` sprint. A `Blocker` severity was considered and rejected
+(BR-D24): bolting a delivery band onto a risk scale muddles both, and the scheduling harm it
+was meant to signal is already fixed by `MW` existing.
+
 ### 3.1 Identity and privilege
 
 | ID | Sev | Finding | Where | Sprint |
 | --- | --- | --- | --- | --- |
 | **F1** | **Critical** | *(Closed in S2-T2 by **deleting** the role, not by hardening it — BR-D17. The boundary construction originally drafted here moved upstream to ST-T2 and the F41 issue.)* `state_access_policy` grants `iam:CreateRole`, `iam:PutRolePolicy`, `iam:AttachRolePolicy`, `iam:DeleteRolePolicy`, `iam:DeleteRole` on `Resource = "*"`. This is **privilege escalation to account administrator**: the CI role can mint a role with `AdministratorAccess` and attach a trust policy naming itself. The `Resource = "*"` even carries an in-file comment conceding it. | `bootstrap/state-backend.tf:82-111` | S2-T1 |
-| **F2** | High | OIDC trust condition is `StringLike sub = "repo:${var.github_repo_path}:*"`. The `*` admits every branch, every `pull_request`, and every environment — and in IAM `StringLike`, `*` matches `:` too, so it also admits claim shapes that do not exist yet. **Closed by adoption:** the upstream role's trust is already `StringEquals` over an enumerated subject list. ST-T3 widens this glob temporarily during the transfer, then S2-T2 deletes the role entirely. | `bootstrap/oidc-setup.tf:37` | S2-T2 |
+| **F2** | High | OIDC trust condition is `StringLike sub = "repo:${var.github_repo_path}:*"`. The `*` admits every branch, every `pull_request`, and every environment — and in IAM `StringLike`, `*` matches `:` too, so it also admits claim shapes that do not exist yet. **Closed by adoption — but NOT on the operator this previously claimed.** *(Corrected 2026-08-05, advisory `[M2]` § 6.)* This entry used to read "the upstream role's trust is already `StringEquals` over an enumerated subject list." **It is not.** Live `global-bootstrap/main.tf` uses **`StringLike`** on `…:sub` for the **apply** role; `StringEquals` appears only on the **plan** role, where a comment says so explicitly. The values are wildcard-free today so it is functionally equivalent — but F2's entire substance is *"in IAM `StringLike`, `*` matches `:` too"*, so closing it on an operator the upstream code does not use means any future `extra_oidc_subjects` entry containing a `*` globs silently. **S2-T2 gains an acceptance criterion — "the adopted role's trust condition uses `StringEquals`" — and the `StringLike` → `StringEquals` change is filed with the F41 upstream issue (§ 9.4).** ST-T3 widens this glob temporarily during the transfer, then S2-T2 deletes the role entirely. | `bootstrap/oidc-setup.tf:37` | S2-T2 |
 | **F3** | High | **One role for plan and apply.** The PR-triggered plan job assumes the same role the apply job does, so read-only review work holds credentials that can destroy the account. **Closed by adoption rather than by fixing:** `global-bootstrap`'s `plan_roles.tf` already provides a separate read-only identity trusted only on `:pull_request`, opted into by ST-T2 and switched to in S2-T2. | `bootstrap/oidc-setup.tf`, `.github/workflows/deploy-ai-lab.yml` | S2-T2 |
 | **F4** | Medium | Confused-deputy: `bedrock_kb_role`'s trust policy conditions on `aws:SourceAccount` but not `aws:SourceArn`, so any Bedrock resource in the account can induce the service to assume it. Filed as **#6**. | `modules/aws-bedrock-rag/iam.tf:33-37` | S2-T4 |
 | **F5** | **High** *(confirmed live 2026-08-05)* | The AOSS data-access policy names `data.aws_arn.current_identity.arn` — *whoever ran the last apply*. Locally that is a human SSO session; in CI it is the deploy role. It also resolves to an **`sts` assumed-role ARN**, not an IAM role ARN, so the granted principal can be a session that no longer exists, and alternating local/CI applies produce a perpetual diff. **This is not theoretical: run `26788807269` shows `create_index.py` failing `AuthorizationException(403, '')` six times in a row** — the policy had been applied from a human SSO session, so the CI role has no data-plane access at all. | `modules/aws-bedrock-rag/iam.tf:121` | S2 |
@@ -144,10 +164,30 @@ The operator confirmed **(1) one shared AWS account** and **(2) the repo transfe
 
 | ID | Sev | Finding | Where | Sprint |
 | --- | --- | --- | --- | --- |
-| **F45** | **High** | **The transfer silently activates a dormant, over-privileged, wrong-workload role.** Today `github-actions-bedrock-serverless-rag` cannot be assumed from `Seuss27/…` (F44). The moment the repo becomes `glunk-works/bedrock-serverless-rag`, its trust subject `repo:glunk-works/bedrock-serverless-rag:ref:refs/heads/main` **matches** — and that role carries `lambda:*`, `apigateway:*` (F42) **and** `iam:CreateRole`/`PutRolePolicy`/`AttachRolePolicy`/`PassRole` on `Resource = "*"` (F41). So a repository-settings change, with no IaC diff anywhere, creates a **new escalation path into the shared account**. The upstream fix must land **before** the transfer, not after. | `global-bootstrap/project_policies.tf` + the transfer | **ST-T2, blocking ST-T3** |
+| **F45** | **Critical** *(raised from High 2026-08-05, BR-D24)* | **The transfer silently activates a dormant, over-privileged, wrong-workload role.** **Why Critical:** every other Critical here has a diff a human could catch. This one's trigger is an org owner clicking *Transfer* — **no IaC change, no PR, no review surface anywhere** — and it is the one Critical this plan intends to *create*, on a sprint scheduled second. Today `github-actions-bedrock-serverless-rag` cannot be assumed from `Seuss27/…` (F44). The moment the repo becomes `glunk-works/bedrock-serverless-rag`, its trust subject `repo:glunk-works/bedrock-serverless-rag:ref:refs/heads/main` **matches** — and that role carries `lambda:*`, `apigateway:*` (F42) **and** `iam:CreateRole`/`PutRolePolicy`/`AttachRolePolicy`/`PassRole` on `Resource = "*"` (F41). So a repository-settings change, with no IaC diff anywhere, creates a **new escalation path into the shared account**. The upstream fix must land **before** the transfer, not after. | `global-bootstrap/project_policies.tf` + the transfer | **ST-T2, blocking ST-T3** |
 | **F46** | Medium | **The retry loop reports an authorization failure as a propagation delay, and the most recent commit made it worse.** `create_index.py` retries any `Exception` six times; run `26788807269` shows six consecutive `AuthorizationException(403, '')` — a condition that can never resolve by waiting, because it is F5, not IAM eventual consistency. Commit `0aa56dc` raised the delay to 45 s, so CI now spends **~12 minutes** failing at it. The most recent work on this repo was tuning the wrong variable. | `environments/ai-lab/create_index.py:71-93` | S4-T4 |
-| **F48** | **High** *(found 2026-08-05 while applying the F40 stopgap; severity SURVIVES BR-D20 — see below)* | **`bootstrap/`'s OpenTofu state is a local, gitignored file on one workstation.** `bootstrap/` declares **no `backend` block** — despite `state-backend.tf` creating a state bucket *for the other root*. So `bootstrap/terraform.tfstate` (plus `.backup` and a `terraform.tfvars`) lives only in the working tree, unversioned and unbacked-up, and it is the state describing the **org-shared OIDC provider**, the CI deploy role, and the state backend itself. Three consequences: **(a)** losing that laptop makes the highest-consequence root in the org unmanaged; **(b)** `prevent_destroy` (F40's stopgap) **only works while that file exists** — no state, no tracked resource, no guard; **(c)** re-applying from an empty state would try to *create* the provider and fail `EntityAlreadyExists`, reproducing F39's split brain in the one root where it hurts most. Superseded rather than fixed by BR-D17/BR-D18: `bootstrap/` is retired and its resources move to `global-bootstrap`, whose state *is* remote and locked. Until then, **back the file up out-of-band.** **BR-D20 does not downgrade this**: the state file is disposable in respect of *this repo's* resources, but it is the only record of the **org-shared OIDC provider**, whose loss is an organization-wide outage. That single resource is what makes an otherwise-disposable file matter — and moving it upstream (BR-D18) is what makes the rest of `bootstrap/` freely destroyable, as the design intends. | `bootstrap/` (no `backend` block) | S2-T3, S2-T4 |
-| **F47** | **High** | **The shared account changes F1's and F41's blast radius from "a personal lab" to "the organization."** One account holds this repo's state, the org state bucket, **and bounty-infra's KMS-encrypted findings archive** — third-party vulnerability data, the most restricted asset any glunk-works repo holds (bounty-infra's BI-D4). Five CI roles in that account each hold `iam:CreateRole`/`PutRolePolicy`/`AttachRolePolicy` on `Resource = "*"` — this repo's `github-actions-deploy-role` (F1) plus all four org project roles (F41). Compromise of **any one** of the five yields account administrator, and therefore the findings archive. `global-bootstrap`'s explicit `DenyBountyFindingsDataAccess` on the *plan* roles shows the risk was seen; the *apply* roles have no equivalent. | account-wide | S2, upstream |
+| **F48** | **High** *(found 2026-08-05 while applying the F40 stopgap; severity SURVIVES BR-D20 — see below)* | **`bootstrap/`'s OpenTofu state is a local, gitignored file on one workstation.** `bootstrap/` declares **no `backend` block** — despite `state-backend.tf` creating a state bucket *for the other root*. So `bootstrap/terraform.tfstate` (plus `.backup` and a `terraform.tfvars`) lives only in the working tree, unversioned and unbacked-up, and it is the state describing the **org-shared OIDC provider**, the CI deploy role, and the state backend itself. Three consequences: **(a)** losing that laptop makes the highest-consequence root in the org unmanaged; **(b)** `prevent_destroy` (F40's stopgap) **only works while that file exists** — no state, no tracked resource, no guard; **(c)** re-applying from an empty state would try to *create* the provider and fail `EntityAlreadyExists`, reproducing F39's split brain in the one root where it hurts most. Superseded rather than fixed by BR-D17/BR-D18: `bootstrap/` is retired and its resources move to `global-bootstrap`, whose state *is* remote and locked. Until then, **back the file up out-of-band.** **BR-D20 does not downgrade this**: the state file is disposable in respect of *this repo's* resources, but it is the only record of the **org-shared OIDC provider**, whose loss is an organization-wide outage. That single resource is what makes an otherwise-disposable file matter — and moving it upstream (BR-D18) is what makes the rest of `bootstrap/` freely destroyable, as the design intends. **⚠ The exposure window is ST, not S2** *(added 2026-08-05)*: F48's remedy is assigned to S2-T3/S2-T4, but **ST runs first and mandates three human applies against exactly this file** — ST-T0's drift reconciliation, and ST-T3's trust-policy widen and narrow — on a repository mid-transfer between owners. An interrupted apply drops the OIDC provider from state, `prevent_destroy` evaporates with it (it is a plan-time guard over a state entry, not a property of the AWS resource), and recovery per (c) is a hand-written state file, executed against a repo whose OIDC trust subjects are themselves in flux. **F48's own mitigation is therefore promoted to a blocking ST-T0 acceptance criterion** — back the file up out-of-band before the sprint's first apply, and again immediately before ST-T3's narrow. | `bootstrap/` (no `backend` block) | **ST-T0** (backup), S2-T3, S2-T4 |
+| **F47** | **Critical** *(raised from High 2026-08-05 by the multiplier rule, BR-D24)* | **The shared account changes F1's and F41's blast radius from "a personal lab" to "the organization."** **Why Critical:** it is what turns lab compromise into compromise of bounty-infra's KMS-encrypted third-party findings archive — a worse outcome than F1 alone, not a rank below it. Rating it High was the same under-reading `CLAUDE.md`'s "hard edge" paragraph exists to prevent. One account holds this repo's state, the org state bucket, **and bounty-infra's KMS-encrypted findings archive** — third-party vulnerability data, the most restricted asset any glunk-works repo holds (bounty-infra's BI-D4). Five CI roles in that account each hold `iam:CreateRole`/`PutRolePolicy`/`AttachRolePolicy` on `Resource = "*"` — this repo's `github-actions-deploy-role` (F1) plus all four org project roles (F41). Compromise of **any one** of the five yields account administrator, and therefore the findings archive. `global-bootstrap`'s explicit `DenyBountyFindingsDataAccess` on the *plan* roles shows the risk was seen; the *apply* roles have no equivalent. | account-wide | S2, upstream |
+
+### 3.1d Found by the cold-context plan review, 2026-08-05
+
+Four findings surfaced by the adversarial review of PR #18 (the plan itself), all of them
+properties of **live** code — this repo's module, or `glunk-works/global-bootstrap` — rather
+than of the plan. Defects that exist only *in the plan* were fixed by amending the sprint
+plans and are not findings.
+
+> **Disclosure note.** These entries state *what is wrong and what closes it*. The
+> step-by-step exploit chains stay in this repo's **private draft security advisories**
+> (`gh api repos/<owner>/<repo>/security-advisories`), which is where the review filed them
+> and why. This file is public (**TB5**); a finding is a fix instruction here and a recipe
+> there. Do not move advisory text into this file wholesale.
+
+| ID | Sev | Finding | Where | Sprint |
+| --- | --- | --- | --- | --- |
+| **F55** | **High** | **The deploy identity is not provably sufficient for a from-scratch apply, and the teardown that needs it runs first.** `state_access_policy` grants `aoss:Create/DeleteSecurityPolicy`, `aoss:CreateCollection`, `bedrock:CreateKnowledgeBase`, `bedrock:CreateDataSource` — and nothing else in those families. The module declares at least four things it cannot then create or refresh: `aws_opensearchserverless_access_policy` (needs `aoss:*AccessPolicy`), the KB's `roleArn` (needs `iam:PassRole`), `aws_s3_bucket_server_side_encryption_configuration` (needs `s3:*EncryptionConfiguration` — `s3:PutBucket*` matches neither verb), and `aws_s3_bucket` refresh (needs `s3:GetBucketVersioning`/`GetBucketLocation`/`GetBucketTagging`). **These have never been exercised** because run `26788807269` died at `EntityAlreadyExists` *before AOSS or Bedrock were reached*, so they become visible exactly once, at the worst moment: after the teardown has deleted the working-but-orphaned system and before the replacement identity exists. **The verb list above is indicative and must be regenerated from a real dry run, not copied from here.** | `bootstrap/state-backend.tf:82-111` vs `modules/aws-bedrock-rag/` | **MW** |
+| **F56** | **High** | **The upstream read-only plan role is unusable by this repo, in two independent ways.** *(a)* `plan_roles.tf` trusts **only** `repo:<org>/<repo>:pull_request` via `StringEquals`, with no `extra_oidc_subjects` mechanism — so any job triggered `on: push` to `main` can never assume it. *(b)* `plan_role = true` generates the role and its **state**-read policy, but the **workload** read policy upstream is `aws_iam_policy.bounty_infra_plan_policy` — hardcoded, not `for_each`ed — so this project's plan role would hold state-read and nothing else, and every PR plan would `403` on refresh. **The dangerous part is the unblock, not the breakage:** the natural fix for (a) is to point the plan job at the apply role, which is F13 restored in the same change that closes it. | `global-bootstrap/plan_roles.tf`, `project_policies.tf` | **ST-T2**, S1-T5 |
+| **F57** | **High** | **The KB execution role receives neither `path` nor `permissions_boundary`, so the boundary ST-T2 installs denies its creation.** `aws_iam_role.bedrock_kb_role` declares `name = "personal-bedrock-kb-execution-role"` and nothing else. Once the upstream `iam:PermissionsBoundary` condition and `role/bedrock-rag/*` Resource scope are live, CI's `CreateRole` for it is denied twice over — wrong path, no boundary. **The failure lands at S2-T2's *verify* step, when the escalation-capable local role has not yet been deleted and the cheapest unblock is to drop the boundary condition upstream** — silently reverting the whole construction and reopening F41. The module change must land **before** the upstream condition, and the two live in different repositories. | `modules/aws-bedrock-rag/iam.tf:21-23` | **ST**, before ST-T2 |
+| **F58** | Medium | **`DenyBountyFindingsDataAccess` is `s3:`-only, and is attached to one project's plan role rather than all of them.** Two gaps in the control that exists specifically to protect asset #1. *(a)* The Deny names `s3:*` on the findings bucket; it does not name `kms:`, so it does not constrain `kms:ScheduleKeyDeletion` or `kms:PutKeyPolicy` against the key that encrypts it — see § 2.2, the asset is two resources. *(b)* `bounty_infra_plan_policy` and its attachment are not `for_each`ed, so the plan role ST-T2 creates for this project would carry **no findings Deny at all**, despite § 9.4 describing the Deny as applying to "the plan roles" plural. | `global-bootstrap/project_policies.tf` | **ST-T2**, upstream |
 
 ### 3.2 Pipeline
 
@@ -155,7 +195,7 @@ The operator confirmed **(1) one shared AWS account** and **(2) the repo transfe
 | --- | --- | --- | --- | --- |
 | **F51** | **High** *(created by the 2026-08-05 scope correction)* | **The project does not do the thing it was designed to do.** Its stated purpose is to be stood up and torn down on demand (BR-D20) — yet **no `tofu apply` has ever completed successfully** (every push-to-`main` run is `failure` or `cancelled`), and a full `destroy` → `apply` → verify cycle has never been demonstrated. At least four defects sit on that path: the AOSS data-access policy grants a human SSO session rather than the CI role (**F5**), the index bootstrap then fails `403` and retries for ~12 minutes (**F46**), the state is orphaned so apply collides with `EntityAlreadyExists` (**F39**), and `prevent_destroy` on the shared OIDC provider now blocks `tofu destroy` of `bootstrap/` outright until ownership moves upstream (**BR-D18**). Each was recorded separately as a security or correctness defect; together they are a **functional** one. **A clean create/destroy/create cycle is the acceptance test for S2 (BR-D20)** and the cheapest possible route to closing F39, F5 and F46 at once. | whole-system | **S2** |
 | **F17** | **Critical** | **No branch-protection ruleset exists.** `gh api repos/Seuss27/bedrock-serverless-rag/rulesets` returns `[]`. `main` accepts a direct push, no check is required, and every gate in `.github/workflows/` is therefore advisory. This is the multiplier on F13 and F1. | GitHub settings | S0-T1 |
-| **F13** | **Critical** | `tofu apply -auto-approve` runs on every push to `main` with **no `environment:`, no approval, no plan artifact**. With F17 and F1, one push is unreviewed admin-capable execution. | `.github/workflows/deploy-ai-lab.yml:85-87` | S1-T5 |
+| **F13** | **High** *(lowered from Critical 2026-08-05, BR-D24)* | `tofu apply -auto-approve` runs on every push to `main` with **no `environment:`, no approval, no plan artifact**. With F17 and F1, one push is unreviewed admin-capable execution. **Why lowered — double-counting, and nothing else.** The escalation it enables is F1's (Critical) and the absent protection is F17's (Critical); strip both and what remains is "an unreviewed apply reaches AWS on merge" — a BR-D2 violation, genuinely High, but not an independent Critical. **Two arguments were explicitly rejected as rationale:** that no push-to-`main` run has ever succeeded, and that the workflow is `paths:`-filtered. Both are artifacts *this plan deletes* — `MW` is precisely what makes auto-apply start working, and the `paths:` filter comes off in the change that makes a job required. Recorded as rationale they would be false the day `MW` lands. | `.github/workflows/deploy-ai-lab.yml:85-87` | S1-T5 |
 | **F14** | High | The apply job **re-plans** rather than applying a saved plan file, so what applies is not what was reviewed. Adding an approval without fixing this buys a signature on a different change. | same | S1-T5 |
 | **F15** | High | **No action is SHA-pinned.** `aws-actions/configure-aws-credentials@v4` receives the OIDC claim on a mutable tag — moving that tag is a credential handoff. | `.github/workflows/deploy-ai-lab.yml` | S1-T1 |
 | **F16** | Medium | `tofu plan -no-color` dumps the full plan into a **world-readable log on a public repo**, rendering the account id, bucket names, role ARNs, and the collection endpoint (BR-D4). | same, `:82` | S1-T6 |
@@ -212,12 +252,20 @@ The operator confirmed **(1) one shared AWS account** and **(2) the repo transfe
 | **F37** | Low | No `CODEOWNERS`, no `SECURITY.md`, no pull-request template, no Dependabot config, no `.gitattributes` (a Windows workstation commits files a Linux runner executes; CRLF in a future `run:` script is a silent `bad interpreter`). | `.github/`, root | S0-T5 |
 | **F38** | Low | Three issue templates describe an **ArgoCD/Flux/Kubernetes GitOps estate this repo does not have** — `drift_sync.yml` asks for "the ArgoCD app, Flux Kustomization, or Helm Release," and `bug_report.yml` offers Production/Staging environments that do not exist. They were copied from a platform-repo template set. | `.github/ISSUE_TEMPLATE/*.yml` | S0-T3 |
 
-**Totals:** 4 Critical · 17 High · 19 Medium · 15 Low — **54 findings**. Two are now closed
-(**F40**'s stopgap half, **F52**). The count barely moved; the *ordering* did. Three findings were downgraded
-because they threatened data that does not exist (**F39**, **F23**, **F50**), one was created
-because the correction exposed an unmet functional requirement (**F51**), and everything
-touching the **shared AWS account** was untouched — that blast radius is not ephemeral. Two (F41, and the
-account-wide half of F47) cannot be fixed in this repo; they are filed upstream (§ 9.4).
+**Totals:** 5 Critical · 18 High · 21 Medium · 14 Low — **58 findings**. *(Counted from the
+tables, 2026-08-05, after the plan review. The previously stated `4 · 17 · 19 · 15` was wrong
+twice over: it summed to 55 against a stated total of 54, and the pre-review truth was
+`5 · 15 · 20 · 14`. **Recount from the tables rather than adjusting this line by hand.**)*
+
+Two are closed (**F40**'s stopgap half, **F52**). **The five Criticals are F1, F17, F41, F45,
+F47** — F45 and F47 raised and F13 lowered on 2026-08-05 under the multiplier rule (BR-D24,
+stated at the head of this section). Four findings were added by the cold-context plan review
+(**F55**–**F58**, § 3.1d). Three were downgraded by the BR-D20 scope correction because they
+threatened data that does not exist (**F39**, **F23**, **F50**), and one was created because
+that correction exposed an unmet functional requirement (**F51**). Everything touching the
+**shared AWS account** was untouched throughout — that blast radius is not ephemeral. Four
+(**F41**, the account-wide half of **F47**, **F56**, **F58**) cannot be fixed in this repo;
+they are filed upstream (§ 9.4).
 
 ---
 
@@ -245,28 +293,42 @@ account-wide half of F47) cannot be fixed in this repo; they are filed upstream 
 | **BR-D21** | **Secrets come from AWS, not Infisical.** Aligning with the move already made under `603identity`. The concrete rule, in three tiers, because most of what this repo handles is *restricted* rather than *secret* and conflating them is how a secret store fills with non-secrets: **(1) Secrets** — anything whose disclosure is itself the harm: **AWS SSM Parameter Store `SecureString`**, `/bedrock-serverless-rag/<env>/<name>`, read at runtime via `data.aws_ssm_parameter`. Parameter Store rather than Secrets Manager **by default**: the standard tier is free where Secrets Manager bills per secret per month, and this is a cost-sensitive ephemeral lab (BR-D20). Secrets Manager only where native rotation or cross-account sharing is genuinely required — a decision to record, not a default. **(2) Restricted-but-not-secret** — account id, role ARNs, bucket names, the collection endpoint: GitHub Actions **variables** and tofu variables, never a secret store, and never a workflow log (BR-D4). **(3) Neither** — plain committed configuration. **This repo currently holds no secrets at all** (`gh secret list` is empty; the only variables are `AWS_OIDC_ROLE_ARN` and `DATA_SOURCE_BUCKET_NAME`), so there is nothing to migrate — this decision sets the pattern *before* the first secret exists, which is the cheapest moment to set it. **Confirmed 2026-08-05 as an ORG-LEVEL direction: this repo is the PILOT, and `bounty-infra` / `loop-orchestrator` follow as time permits.** That promotes S3-T8's deliverable from "clean up one repo" to "produce a pattern another repo can copy" — see § 9.5, including the reason a no-secrets pilot is a *weak* pilot and what S3-T8 does about it. |
 | **BR-D14** | **No `architect-review` CI gate yet.** A fresh-session review gate is worth nothing while the deterministic checks beside it do not block a merge (F17). `review.ci_gate` stays `null`; the critic pass is `/critic-gate`, run locally before the PR. Reconsider once S0–S2 have landed. |
 | **BR-D15** | **The devcontainer is the reproducible local green gate.** Every tool in it is version-pinned and SHA256-verified, and its pins are kept **equal** to the corresponding CI job pins — a divergence between local and CI results is a defect in this repo, not a local quirk. Recorded by SD; the Python layer is added by S5-T5. |
-| **BR-D16** | *(reserved — allocated by S3-T1)* If Amazon Bedrock cannot reach a VPC-restricted OpenSearch Serverless collection, S3-T1 records the accepted public-reach risk here, with a dated documentation citation and the compensating controls that carry it. If Bedrock can, this id is released and the VPC-endpoint design is recorded instead. |
+| **BR-D16** | **The AOSS collection stays publicly reachable, and that is the default outcome — not a fallback.** *(Changed 2026-08-05 by BR-D23; was "reserved, allocated by S3-T1" pending a research task on VPC reachability.)* A VPC endpoint plus two subnets, a security group and a VPC-attached runner, to protect a vector store holding **nothing**, in a single-operator lab, is ceremony — and the original plan made it a hard dependency of a second task, propagating the cost into another sprint. The accepted risk: the collection's data plane is reachable from the internet with **SigV4 as the only control** (TB4). The compensating controls that carry it are the AOSS data-access policy (which names principals, not networks), the empty corpus (BR-D20), and the single-consumer posture (BR-D11). **Revisit the day BR-D11 is revisited** — a second consumer or the first non-public document — not before. |
+| **BR-D22** | **State confidentiality comes from OpenTofu native client-side encryption. The DynamoDB lock table stays.** *(Decided 2026-08-05; amended the same day — see below.)* SSE-S3 on the state bucket protects the object at rest in S3 and nothing else; it does not protect a state file from anyone who can legitimately `s3:GetObject` it, which after ST-T2 includes **a plan role assumable from any pull request**. Native client-side encryption (`terraform { encryption { … } }`, `aws_kms` key provider, OpenTofu ≥ 1.7) does. This is the control that makes the BR-D21 secrets pilot honest — see § 9.5. **Ownership splits, and does not follow BR-D17 cleanly:** BR-D17 assigns the state *backend* upstream, but **neither mechanism here is backend-side.** Native encryption is a **client-side** block in *every root that writes state*; `global-bootstrap` cannot enable it for this repo. So: upstream owns the key-provider choice (filed as an issue, § 9.4); **this repo owns the `encryption {}` block in both roots and the `required_version` floors**, folded into S2-T4. Note `bootstrap/providers.tf`'s `terraform {}` block declares **no `required_version` at all**, and `environments/ai-lab`'s `>= 1.8.0` already covers encryption, so no floor bump is needed there. **AMENDED — `use_lockfile` is NOT adopted and the DynamoDB lock table is retained, managed as IaC.** The original draft retired the lock table in favour of S3-native locking. That was wrong: this repo's own `bedrock-lab-state-locks` retires under BR-D17/F43, but the table it then uses is the org's `global-tofu-lock`, **shared with `bounty-infra`, `tri-loop` and `resume-optimizer`**. Retiring it would force every consumer repo to raise its OpenTofu floor and rewrite its backend block in lockstep — a coordinated multi-repo migration, against shared infrastructure, for no risk reduction. `dynamodb_table` therefore **stays** in `environments/ai-lab/backend.tf`; S2-T4 repoints it at the org table rather than removing it. *(Open, non-blocking: Terraform deprecated `dynamodb_table` in 1.11 in favour of `use_lockfile`. Whether OpenTofu followed is **unverified** — check the changelog at S2-T4 rather than assuming either way. If it did, this buys a deprecation warning now and a migration later; it does not change the decision.)* |
+| **BR-D23** | **The plan is scaled to the system that exists, not the one it resembles.** 158 lines of Python, an empty corpus, one operator, and a lab whose stated design is destroy-and-rebuild — against, originally, nine sprints, twelve required CI checks, five runbooks, a customer-managed KMS key, and a devcontainer carrying a permanent five-tool pin-sync obligation. **The blast-radius work (F1, F41, F45, F47, F40) is untouched and gets everything the plan gives it.** Everything downstream of S2 is cut to fit. **The structural fix matters more than the cuts:** the plan scheduled *"make the project work at all"* (F51/F39/F5) **fifth**, behind three sprints of governance and pipeline construction — while BR-D20 declares `destroy → apply → verify` the acceptance test every infrastructure sprint must pass. No sprint before S2 could pass it, and S1 in particular built an Environment gate, a saved-plan apply and seven required checks *around an apply that had never once succeeded*. The new **`MW`** sprint runs immediately after ST and fixes that. **What this is not:** it is not "five sprints instead of nine" — that headline does not survive its own task list. It is **roughly the same sprint count with about half the tasks, and far fewer permanent obligations**: no pin-sync treadmill, no customer-managed key, no second S3 bucket, four fewer required checks. See § 5 for the resulting sequence. |
+| **BR-D24** | **One severity rule, stated once; and no `Blocker` tier.** *(a)* **A multiplier is rated at the severity of the worst outcome it enables** — see the head of § 3, where it now lives. The inventory previously applied this two ways (F17 Critical *as* a multiplier, F47 High *because* multipliers rank lower), which is what surfaced it. Consequences: **F45 → Critical** (its trigger is a repository-settings change with no diff, no PR and no review surface anywhere — and it is the one Critical this plan intends to *create*), **F47 → Critical** (it is what turns lab compromise into compromise of bounty-infra's findings archive), **F13 → High** (its Critical rating double-counted F1's escalation and F17's absent gate; strip both and a BR-D2 violation remains, which is High). **Two arguments for lowering F13 were considered and explicitly rejected**: that no push-to-`main` run has ever succeeded, and that the workflow is `paths:`-filtered. Both are artifacts *this plan deletes*, so recording them as rationale would make the entry false the day `MW` lands. *(b)* **No `Blocker` severity.** F51 is a defect in the deliverable, not a risk, and this scale measures risk; bolting a delivery band onto it muddles both and creates a permanent "is this Blocker or Critical?" argument. The harm the tier was meant to signal was **scheduling**, and BR-D23 already fixed it by creating `MW`. F51 stays High, and § 5 states explicitly that ordering is not by severity. |
 
 ---
 
 ## 5. Sprint sequence
 
+*Reshaped 2026-08-05 by **BR-D23**. Sprint ids are stable — `S3` and `S4` merge but keep both
+ids, and no sprint is renumbered, because renumbering would invalidate every cross-reference
+already written into these plans and every `Closes:` line in the inventory.*
+
 | Sprint | Title | Closes | Status |
 | --- | --- | --- | --- |
-| **S0** | Governance and repository baseline | F17, F33–F38 | **planned** |
-| **SD** | Development container *(parallel)* | — (capability; records BR-D15) | planned |
-| **ST** | **Organization transfer** — `Seuss27/` → `glunk-works/` | F44, F45, and the ST-T1 half of F40 | planned |
-| **S1** | Pipeline hardening | F13–F16, F18–F21 | planned |
-| **S2** | Identity, state reconciliation, and `bootstrap/` retirement | F1–F5, F39, F40, F42, F43, F47 (local half) | planned |
-| **S3** | Data-plane and IaC posture | F6–F12 | planned |
-| **S4** | RAG security | F22–F26, F28 | planned |
-| **S5** | Python quality and supply chain | F29–F32 | planned |
-| **S6** | Documentation and operational readiness | #8, BR-D13 | planned |
+| **S0** | Governance and repository baseline *(+ the Infisical deletion and the budget, pulled forward)* | F17, F33–F38, F53 (the deletion half), F54; **the budget closes no `F`** — it is capability work, see § 5 | **planned** |
+| **ST** | **Organization transfer** — `Seuss27/` → `glunk-works/` | F44, F45, F50, F57, F58, and the ST-T1 half of F40 | planned |
+| **MW** | **Make it work** — the first successful `destroy → apply → verify` cycle | **F51**, F39, F5, F46, F55 | planned |
+| **S1** | Pipeline hardening *(thinned)* | F13–F16, F18–F21 | planned |
+| **S2** | Identity, state reconciliation, and `bootstrap/` retirement *(remainder)* | F1–F4, F40, F42, F43, F47 (local half), F48, F56, BR-D22 | planned |
+| **S3+S4** | Data-plane and RAG posture *(merged, ~half the tasks)* | F6–F12, F22–F26, F28 | planned |
+| **S5** | Python cleanup *(four items, not a supply-chain programme)* | F29, F31, F32 | planned |
+| **S6** | Documentation and operational readiness *(two runbooks)* | #8, BR-D13, F53 (the README half) | planned |
+| **SD** | Development container | — (capability; records BR-D15) | **deferred** |
 
-**SD is letter-prefixed, not numbered**, because it runs in **parallel** rather than in
-sequence — the same convention the sibling repo uses for its parallel tracks (`SC`, `SE`,
-`SG`). Renumbering S1–S6 to insert it would invalidate every cross-reference already written
-into these plans.
+**`MW` is letter-prefixed** for the same reason `ST` is: it was inserted after the numbering
+was set, and renumbering costs more than it buys. It is **not** parallel — it is a hard
+sequence point, and the reason it exists is below.
+
+**`SD` is deferred, not optional.** It is blocked on Docker, which the workstation does not
+have, so it is undeliverable today regardless of merit — that is a fact, not a judgement, and
+it does not need re-arguing each sprint. On the merits it also carries a permanent obligation
+(BR-D15: every pin kept *equal* to CI's, forever, on every future bump) against the two pains
+actually observed — CRLF, already fixed by `.gitattributes` in S0-T5, and the `-backend=false`
+wrinkle, already two lines in `CLAUDE.md`. **Precondition to revisit: Docker on the
+workstation.** If it is ever picked up, it must not gate S5.
 
 Plans live at `sprints/S<N>_<slug>/sprint_plan.md`. Each carries a **Critical review**
 section recording the security, logic, and execution objections raised against it during
@@ -275,11 +337,36 @@ artifact.
 
 ### Why this order
 
-The ordering is not by severity, and that is deliberate.
+The ordering is not by severity, and that is deliberate. **The sharpest case is F51** — rated
+High because this scale measures risk and a total *functional* failure is not a risk, but
+scheduled **first among all non-blast-radius work** regardless of that label, because every
+acceptance criterion in S3+S4 reads `tofu plan` output that is meaningless until it is fixed.
+Severity ranks; this section schedules. Where they disagree, this section wins (BR-D24).
 
 - **S0 before everything** because F17 is the multiplier: until a ruleset exists, every
   control the later sprints add is advisory. Fixing F1 (Critical) while `main` accepts a
-  direct push means the fix can be reverted by anyone with push access, unreviewed.
+  direct push means the fix can be reverted by anyone with push access, unreviewed. **S0 also
+  absorbs two items pulled forward** (BR-D23): the *deletion* half of F53 — the commented-out
+  Infisical scaffolding and the three README lines that tell a reader to provision the exact
+  credential F52 says to revoke — because it is pure deletion with zero apply risk and no
+  reason to sit seven sprints out; and the **budget** (F27), because the plan stated in its
+  own words that an environment left running is *"the most likely real-world loss this project
+  will ever produce"* and then scheduled its control ninth. An `aws_budgets_budget` with three
+  thresholds is about fifteen lines. **It closes no `F` finding** — cost was never entered in
+  the inventory, which is itself part of why it ranked ninth. Take only the budget and
+  `docs/cost.md`; the AOSS capacity-limit half is dead (§ 5.1).
+- **`MW` immediately after ST**, and this is the correction BR-D23 exists to make. BR-D20
+  declares `destroy → apply → verify` the acceptance test every infrastructure sprint must
+  ultimately pass — and **no sprint before S2 could pass it**, because no `tofu apply` has ever
+  succeeded (F51). The original order spent S1 building an Environment gate, a saved-plan
+  apply, seven required checks and a plan-summarizer *around an apply that had never once
+  worked*; S1's own Risks section conceded that a green plan job "proves the *job* works, not
+  that the plan is accurate." `MW` pulls forward the teardown-and-rebuild (F39/F5, ex-S2-T1),
+  the AOSS data-access fix (ex-S2-T6) and the retry-loop fix (F46, ex-S4-T4) — the last of
+  which is what makes the cycle *diagnosable* rather than a twelve-minute silent retry. From
+  `MW` onward every sprint validates against a real cycle instead of a fiction.
+  **`MW` cannot start until F55 is closed** — see the hazard list below; that is the one
+  ordering constraint inside it that is easy to miss and expensive to discover.
 - **ST between S0 and S1**, and this is the sequencing decision the 2026-08-05 answers
   forced. The owner name is inside **every** OIDC subject, and repository *variables* do not
   survive a transfer — so doing S1 (which sets `AWS_PLAN_ROLE_ARN`, creates the `production`
@@ -289,37 +376,113 @@ The ordering is not by severity, and that is deliberate.
   over-privileged org role reachable (**F45**).
 - **S1 before S2** because S2 splits one role into two, and a two-role model is only
   meaningful once the pipeline actually has separate plan and apply jobs to assume them.
-  Doing S2 first would create a role nothing uses.
-- **S2 before S3** because S3's changes are applied *by* the deploy role. Hardening the data
-  plane while the role that manages it can escalate to admin protects the wrong thing first.
-- **S3 before S4** because Guardrails and logging are new resources the deploy role must be
-  allowed to create — and S2/S3 set the boundary that grant has to fit inside.
+  Doing S2 first would create a role nothing uses. S1 is **thinned** (BR-D23): T1, T2, T4, T5
+  and T6 are load-bearing and stay; `iac-diff-guard` is **cut** — the plan itself concedes it
+  is bypassable and forbids making it required, so its entire value is a comment, bought at a
+  CI minute on every PR forever. The requirement moves to the PR template.
+- **S2 before S3+S4** because those changes are applied *by* the deploy role. Hardening the
+  data plane while the role that manages it can escalate to admin protects the wrong thing
+  first.
+- **S3 and S4 merge** (BR-D23). Both shrank far enough that two sprints is bookkeeping: S3
+  keeps the S3 bucket public-access block and TLS-only deny, the tags, and the provider-version
+  reconciliation; S4 keeps the Guardrail, `inclusion_prefixes` + prefix deny, and the
+  embedding-model variable extraction. What went, and why, is in **§ 5.1**.
 - **S5 and S6 last** because nothing else depends on them. S6 in particular *must* be last:
   a README rewritten before the architecture stops changing is a README that needs rewriting
-  again, which is how #8 came to exist.
-- **SD as early as possible, in parallel.** It touches no `.tf`, no workflow, and no AWS
-  resource, so it has no dependency beyond S0 (which makes it land through a PR). Every
-  sprint after it gets a green gate that runs in a pinned environment instead of on whatever
-  the workstation happens to have. Its one deliberate omission — the Python layer — is
-  completed by S5-T5.
+  again, which is how #8 came to exist. Both are **cut hard** — S5 to four items, S6 to two
+  runbooks. See § 5.1.
 
 ### Known ordering hazards
 
-1. **S4-T4 and S5 both touch `create_index.py`.** S4-T4 removes the destructive delete and
-   the in-module `local-exec`; S5 adds the toolchain that lints and tests it. Run S4-T4
-   **first** — otherwise S5 writes tests pinning behavior S4 is about to delete, and S4 then
-   lands looking like a regression against a green suite.
-2. **SD pins tool versions that CI also pins.** A pin that is not *equal* to CI's pin is
-   worse than no pin: it produces confident local results that disagree with the gate. Any
-   sprint that changes a CI tool version changes SD's `ARG` in the same PR.
-3. **Every sprint that adds a gating check must append it to three places in one PR** — the
+1. **⚠ `MW`'s teardown is irreversible until F55 is closed. This is the hazard that costs
+   most.** `MW` deletes every orphaned workload resource and rebuilds — but the rebuild runs
+   under `github-actions-deploy-role`'s **current** policy, which cannot create at least four
+   things the module declares (F55). Those grants have never been exercised, because the last
+   run died at `EntityAlreadyExists` before AOSS or Bedrock were reached. Execute the teardown
+   first and the working-but-orphaned system is gone, the rebuild fails `AccessDenied`, and
+   recovery needs an out-of-band human apply against the very `bootstrap/` root being retired.
+   **"The deploy identity is provably sufficient for a from-scratch apply" is a *precondition*
+   of `MW`, demonstrated by a dry run before anything is deleted — never a discovery.** Either
+   adopt the corrected upstream role first, or widen the current policy first; the sprint plan
+   picks one. **Regenerate the missing-verb list from the dry run, not from F55's text.**
+2. **F57 precedes the upstream boundary condition, and they live in different repositories.**
+   The module's KB execution role must gain `path` and `permissions_boundary` **before**
+   ST-T2's `iam:PermissionsBoundary` condition goes live upstream, or CI's `CreateRole` is
+   denied at S2-T2's *verify* step — the exact moment the escalation-capable local role still
+   exists and the cheapest unblock is to drop the condition, reverting the whole construction.
+3. **The retry-loop fix (F46) ships with `MW`, not after it.** It was S4-T4, two sprints
+   later. Without it the first real cycle runs through a twelve-minute silent retry that
+   reports an authorization failure as a propagation delay — turning the sprint whose whole
+   purpose is diagnosis into the least diagnosable one.
+4. **`MW` and S5 both touch `create_index.py`.** `MW` removes the destructive delete and the
+   in-module `local-exec`; S5 adds the one contract test. Run `MW` **first** — otherwise S5
+   pins behavior `MW` is about to delete, and `MW` lands looking like a regression.
+5. **Every sprint that adds a gating check must append it to three places in one PR** — the
    live ruleset, `.ai/project.yml`, and `ruleset-drift.yml` (BR-D9, § 6).
-4. **The upstream policy fix precedes the transfer** (F45). Transferring first opens an
+6. **The upstream policy fix precedes the transfer** (F45). Transferring first opens an
    escalation path into the shared account with no IaC diff to review.
-5. **State reconciliation (F39) precedes S3 and S4.** Both sprints use "read the `tofu plan`
-   output" as an acceptance criterion — for replacements, for `No changes.`, for tag
-   updates. Against a split-brain state that reads a plan of a system that is not there.
-   S2 reconciles by import (BR-D19); until then, treat every plan as unverified.
+7. **State reconciliation (F39) precedes S3+S4.** That sprint uses "read the `tofu plan`
+   output" as an acceptance criterion — for replacements, for `No changes.`, for tag updates —
+   against a split-brain state that plans a system which is not there. **`MW` reconciles by
+   teardown and rebuild, never by import (BR-D19, reversed).** Until `MW` lands, treat every
+   plan as unverified.
+8. **BR-D22's `encryption {}` block lands before the BR-D21 secrets canary.** § 9.5 has the
+   reason: a `data.aws_ssm_parameter` value is *in state*, and after S2-T4 that state is
+   readable by a role assumable from any pull request. Running the canary first would make the
+   pilot demonstrate the anti-pattern two other repos are meant to copy.
+
+### 5.1 What BR-D23 cut, and the reasons that must survive the cut
+
+Recorded so a later session re-adds these **on their merits**, not by accident — and so the
+two that were cut for a *safety* reason are never mistaken for cost trimming.
+
+**Cut for a blast-radius reason. These do not come back when the lab gets real data.**
+
+- **Bedrock model-invocation logging** *(was S4-T2)*.
+  `aws_bedrock_model_invocation_logging_configuration` is a **per-region singleton**.
+  Provisioning it from this repo takes over Bedrock logging **for the entire shared AWS
+  account** — the one holding `global-bootstrap`'s state and bounty-infra's findings archive.
+  That is the `CLAUDE.md` hard edge ("never delete or weaken anything shared"), not
+  proportionality. **The obvious future argument — "we have real prompts now, let's log them"
+  — does not unblock this**; the singleton collision is exactly as bad then. If invocation
+  logging is ever wanted, it is an **`global-bootstrap` deliverable** configured once for the
+  account, not a workload resource. *(The task also proposed CloudTrail S3 data events billed
+  per event, and created a new sensitive asset — a prompt-and-completion log — to audit a
+  system with no users and no data.)*
+- **The dedicated read-only query IAM role** *(was part of S4-T5)*. The query path is an
+  interactive script the operator runs under their own SSO session; a role adds an identity to
+  maintain and removes nothing. The **variable extraction in the same task is kept** — the two
+  independently-declared embedding-model ARNs are a genuine trap (change one, and the index
+  `dimension` silently disagrees).
+
+**Cut on proportionality. These come back when the premise changes — and the premise is
+named, so it is checkable.**
+
+| Cut | Was | Comes back when |
+| --- | --- | --- |
+| Customer-managed KMS key | S3-T4 | The corpus holds data worth a key policy, rotation and revocation. Today it buys CloudTrail key-use records **over data that does not exist**, on a cost-sensitive lab, and introduces an `AccessDenied` "that names neither the key nor the role" into a pipeline that has never applied. BR-D10 is what will already be in place. |
+| Dedicated S3 access-log bucket | S3-T2 | The source bucket holds objects. A second bucket, its own public-access block, its own lifecycle rule — a new standing asset to log access to a bucket with **zero objects**. |
+| Bucket versioning | S3-T2 | The corpus stops being disposable (BR-D20). |
+| SBOM (CycloneDX) | S5 | There is a consumer or a distributable. There is neither. |
+| `dependency-audit` **as a required check** | S5 | Someone is on call. **The scan still runs** — the cut is the *gate*. A new upstream CVE turning `main` red on a repo designed to sit destroyed is the wrong trade. |
+| Five hatch environments | S5 | There is a package and a build backend. There is neither. |
+| Python 3.11 → 3.12 migration | S5 | Never, on its own merits — it is convention conformance with zero risk reduction. |
+| `ingest.md`, `reindex.md`, `incident-injection.md` runbooks | S6-T2 | The operations they document have been performed at least once. They document operations never performed on a corpus that does not exist, and the third depends on the alarm cut above. **`teardown.md` and `break-glass.md` are kept** — BR-D20 makes teardown the primary operating procedure, and break-glass is the one procedure where being wrong costs most. |
+| `iac-diff-guard` | S1 | Never — see § 5's S1 note. |
+| VPC-restricted collection | S3-T1 | BR-D11 is revisited. Now recorded as the **default** outcome in BR-D16, not a fallback. |
+
+**Moved, not cut.**
+
+- **The SSM secrets canary** *(was S3-T8)* → an issue on `glunk-works/global-bootstrap`. § 9.5
+  already says the *pattern* belongs upstream; it is now explicit that the **work** does too.
+  A pilot whose deliverable is "a pattern two other repos copy" has a different owner and a
+  different acceptance bar than a local cleanup. **The Infisical *deletion* half stays here and
+  moves earlier, to S0.**
+- **F46's retry fix** *(was S4-T4)* → `MW`. See hazard 3.
+- **The budget** *(was S6-T3)* → S0. See § 5. *(Its companion half — an AOSS capacity limit via
+  `aws_opensearchserverless_account_settings` — is **dead**: that resource does not exist under
+  any spelling, provider issue `hashicorp/terraform-provider-aws#41245`, open since 2025-02-05.
+  A capacity limit is console/CLI-only. Do not write it into a task.)*
 
 ---
 
@@ -485,6 +648,43 @@ impossible "even if a later edit widens the Allow above." The **apply** roles �
 `iam:*` on `*` — have no such Deny. The control exists; it is on the weaker of the two role
 classes.
 
+**And it is weaker still than that sentence implies** *(corrected 2026-08-05, **F58**)*. Two
+gaps in the Deny itself, both upstream:
+
+1. **It says "the plan role**s**" — plural — but is attached to one.** `bounty_infra_plan_policy`
+   and its attachment are hardcoded, not `for_each`ed over `var.projects`. The plan role ST-T2
+   creates for *this* project would therefore carry **no findings Deny at all**.
+2. **It names `s3:*` and not `kms:`.** Asset #1 is two resources (§ 2.2) — the findings bucket
+   and the KMS key encrypting it. An `s3:*` Deny does not constrain `kms:ScheduleKeyDeletion`
+   or `kms:PutKeyPolicy` against that key, which are respectively irreversible destruction of
+   the archive and a rewrite of who may decrypt it. **Fix the Deny upstream *before* any KMS
+   verbs are granted to a workload policy**, not after.
+
+**F56** — the read-only plan role is unusable by this project in two independent ways: its
+trust admits only `:pull_request`, and the workload *read* policy is hardcoded to
+`bounty_infra_plan_policy` rather than generated per project. Both are upstream changes. File
+with F41: this project needs a `bedrock_rag_plan_policy` mirror **carrying the corrected Deny
+above**, and either an `extra_oidc_subjects` equivalent on `plan_roles.tf` or an explicit
+decision that no `push`-triggered job assumes a plan role.
+
+**The `StringLike` → `StringEquals` change on the apply role's trust** *(F2, `[M2]` § 6)*.
+Wildcard-free today and so functionally equivalent — but F2's whole substance is that in IAM
+`StringLike`, `*` matches `:` too, so the moment anyone adds an `extra_oidc_subjects` entry
+containing a `*` it globs silently. Cheap to fix while it is still a no-op.
+
+**BR-D22's key-provider choice** — which KMS key backs OpenTofu native state encryption for
+the org state bucket. Upstream owns the key; **each consuming repo owns its own `encryption {}`
+block**, so this issue is the key and the documented pattern, not a change that can be applied
+on this repo's behalf.
+
+**F8's carried-forward controls** *(`[M2]` § 1)*. S3's plan was to mark F8 closed-by-supersession
+once state moves into the org bucket. Verified against live `global-bootstrap/main.tf`: that
+bucket has versioning and SSE-S3 — but **no `aws_s3_bucket_public_access_block`** (the only PAB
+upstream is `findings_privacy`, on the *findings* bucket), **no TLS-only bucket policy**, and
+the lock table has **neither `prevent_destroy` nor PITR** — which is the exact sub-finding F8
+names. **F8 closes by supersession for versioning and encryption only**; the other four carry
+forward as this upstream issue. Do not let a coder tick F8 whole.
+
 **F45's upstream half** — the `bedrock-serverless-rag` entry in `var.projects` and its
 `bedrock_rag_policy`. Both must be corrected **before** the transfer, since the transfer is
 what makes them reachable. This is ST-T2 and it is a pull request against another repo, on
@@ -499,15 +699,40 @@ first.
 **Why here:** it is the only glunk-works repo with **no secrets to migrate**, so the pattern
 can be established with zero migration risk and no coordination.
 
-**Which is also the pilot's weakness, and S3-T8 has to answer it.** A pilot that migrates
-nothing exercises none of the hard parts — creating a parameter, granting a CI role
-`ssm:GetParameter` + `kms:Decrypt`, reading it at runtime through `data.aws_ssm_parameter`,
-and keeping the value out of `tofu plan` output (an SSM value read into state **is in state**,
-and state renders in plan — BR-D4). A pattern that has never been executed is a proposal.
-So S3-T8 must **prove the path end-to-end with a disposable throwaway parameter, created and
-destroyed inside the task** — exercising the mechanism without leaving standing scaffolding,
-which is exactly the empty-secret-store anti-pattern that same task exists to remove. It is
-also the most BR-D20-native way to test anything here: create, verify, destroy.
+**Which is also the pilot's weakness.** A pilot that migrates nothing exercises none of the
+hard parts — creating a parameter, granting a CI role `ssm:GetParameter` + `kms:Decrypt`,
+reading it at runtime through `data.aws_ssm_parameter`, and keeping the value out of `tofu
+plan` output (an SSM value read into state **is in state**, and state renders in plan —
+BR-D4). A pattern that has never been executed is a proposal. So the pilot must **prove the
+path end-to-end with a disposable throwaway parameter, created and destroyed inside the task**
+— the most BR-D20-native way to test anything here: create, verify, destroy.
+
+> **Ownership moved 2026-08-05 (BR-D23).** The canary is now an **issue on
+> `glunk-works/global-bootstrap`**, not a task in this repo. A deliverable whose acceptance bar
+> is "two other repos can copy this" has a different owner than a local cleanup, and this
+> section already said the *pattern* belongs upstream — it now says the *work* does. **The
+> Infisical deletion half stays here and moved earlier, to S0.**
+
+**Three constraints the pattern must carry, or it teaches the wrong thing** *(advisory `[M2]`
+§ 2)*. These are the reason the canary is worth doing at all, and they are what the consuming
+repos — which hold *real* secrets — will inherit:
+
+1. **⚠ Ordering: BR-D22's native state encryption lands FIRST.** This is a hard dependency, not
+   a preference. After S2-T4 the state sits in the org bucket, **versioned forever**, under
+   SSE-S3 — and ST-T2's `plan_role = true` creates a role **assumable from any pull request**
+   whose state-read policy grants `s3:GetObject` on exactly that prefix. Run the canary before
+   encryption exists and a PR-time identity can read every historical plaintext value the
+   pattern ever produced. SSE-KMS would not close this; **client-side encryption does.**
+2. **Verify without printing.** "A CI run is on record resolving the canary" invites an
+   `output` or an `echo` — i.e. publishing a `SecureString` into a world-readable log on a
+   public repo (TB5). Mandate a **non-sensitive sentinel value**, and confirmation via
+   `length()` or a hash inside `nonsensitive()`. Never the value; never a bare `tofu output`.
+3. **State the rule the mechanism implies:** *never consume a secret through
+   `data.aws_ssm_parameter` in a root whose state is readable by a PR-time role — fetch it at
+   runtime, in the process that needs it.* Also worth one sentence: `alias/aws/ssm` is
+   **account-shared**, so granting `kms:Decrypt` on it means isolation between projects' secrets
+   rests entirely on the `ssm:GetParameter` resource ARN, with zero defence at the key. Correct
+   today, and exactly the kind of thing an inheriting repo should be told rather than discover.
 
 **The handover insight, which is worth more than the mechanism.** Under BR-D21's three tiers,
 **much of what the other repos keep in Infisical is not secret at all.** `bounty-infra` stores
@@ -540,3 +765,8 @@ has not produced a pattern.
 | 2026-08-05 | **Secrets move to AWS-native (BR-D21)**, aligning with `603identity`. Found **F52** — a live Infisical machine-identity secret in plaintext at `environments/ai-lab/.env`; verified never committed and correctly gitignored, but it needs **revoking**, not deleting. Found **F53** — dead commented-out Infisical scaffolding plus a README that still instructs the reader to provision that same credential. Cross-repo inconsistency with `bounty-infra`/`loop-orchestrator` flagged upstream in § 9.4. |
 | 2026-08-05 | **BR-D21 confirmed as an org-level direction: this repo is the secrets-migration PILOT**, with `bounty-infra` and `loop-orchestrator` to follow as time permits. S3-T8's deliverable is promoted from a local cleanup to a transferable pattern (§ 9.5) — including proving the SSM path end-to-end with a disposable parameter, since a repo with no secrets otherwise exercises none of the mechanism it is piloting. |
 | 2026-08-05 | **PR #17 merged (`1ad5aa7`)** — the `prevent_destroy` guard on the org-shared OIDC provider is live on `main` and verified against real state. **F52 closed**: the Infisical machine identity was revoked and its keys stripped from `.env`. Cleaning it surfaced **F54** — `.gitignore` covers `.env` but not `.env.*`, so a routine backup of a secrets file is committable; found by making exactly that backup. **F49 sharpened**: the `AWS_PROFILE` workaround lives in `Invoke-Tofu.ps1`, which is gitignored — local development depends on an unshippable file. Total **54**. |
+| 2026-08-05 | **Cold-context adversarial plan review of PR #18 — verdict SEND BACK, reached independently by all three critics** (`architect`, `security-critic`, `docs-consistency`), plus a provider-surface verification pass. Six defects were found by two critics independently. The security half was filed as **seven private draft security advisories** rather than posted to the public PR — several are working attack paths against the shared AWS account, and publishing them would be the BR-D4 violation the plan itself forbids. **Verified dead:** `aws_opensearchserverless_account_settings` does not exist under any spelling (provider issue #41245, open since 2025-02-05). **Verified dangerous:** `aws_bedrock_model_invocation_logging_configuration` is a per-region singleton. |
+| 2026-08-05 | **Four findings added from the review — F55–F58** (§ 3.1d), all properties of live code rather than of the plan: the deploy identity cannot complete a from-scratch apply (**F55**, and the teardown that needs it was scheduled first); the upstream read-only plan role is unusable in two independent ways (**F56**); the KB execution role has no `path` or `permissions_boundary`, so the boundary ST-T2 installs would deny its creation (**F57**); and `DenyBountyFindingsDataAccess` is `s3:`-only and attached to one project's plan role (**F58**). Defects that existed only *in the plan* were fixed by amending the sprint plans and were deliberately **not** recorded as findings. Total **58**. |
+| 2026-08-05 | **Operator decision 1 — BR-D23, the proportionality reshape.** New **`MW`** sprint immediately after ST, carrying the teardown-and-rebuild, the AOSS data-plane fix and the retry fix — because BR-D20 makes `destroy → apply → verify` the acceptance test every sprint must pass and **no sprint before S2 could pass it**. S0 gains the Infisical deletion and the budget; S3+S4 merge and lose about half their tasks; S5 cuts to four items; S6 to two runbooks; **SD is deferred on a stated Docker precondition**. Three architect amendments were attached to the operator's acceptance: **S4-T2 is cut for a blast-radius reason, not proportionality** (per-region singleton in a shared account — the argument "we have real data now" does not unblock it); **S4-T1's BR-D11 tripwire survives its demotion in writing**; and the review's **"~5 sprints instead of 9" headline is not propagated** — it did not survive its own task list. § 5.1 records every cut with the premise that would bring it back. |
+| 2026-08-05 | **Operator decision 2 — BR-D24, one severity rule and no `Blocker` tier.** The inventory applied *multiplier* two contradictory ways (F17 Critical *as* a multiplier, F47 High *because* multipliers rank lower). Resolved in favour of **"a multiplier is rated at the severity of the worst outcome it enables"**, stated once at the head of § 3. **F45 → Critical** (its trigger is a settings change with no diff, no PR and no review surface, and it is the one Critical this plan intends to create), **F47 → Critical**, **F13 → High** on double-counting alone — the review's other two arguments for lowering F13 were **explicitly rejected** as artifacts this plan deletes. **Five Criticals: F1, F17, F41, F45, F47.** No `Blocker` tier: F51 is a defect in the deliverable, not a risk, and BR-D23 already fixed the scheduling harm. Totals recounted from the tables: **5 · 18 · 21 · 14 = 58** (the previously stated `4 · 17 · 19 · 15` summed to 55 against a stated total of 54). |
+| 2026-08-05 | **Operator decision 3 — BR-D22, state confidentiality, amended in the same session.** Native OpenTofu **client-side** state encryption is adopted and folded into S2-T4; SSE-S3 does not protect state from a plan role assumable from any pull request, and client-side encryption is what makes the BR-D21 secrets pilot honest (§ 9.5). **Ownership does not follow BR-D17 cleanly** — the `encryption {}` block is per-root client-side configuration that `global-bootstrap` cannot set on this repo's behalf, so it splits: upstream owns the key provider, this repo owns the block and the `required_version` floors. **Amended by the operator: `use_lockfile` is NOT adopted and the DynamoDB lock table stays**, because the table this repo migrates onto is the org's `global-tofu-lock`, shared with three sibling pipelines — retiring it would force a coordinated multi-repo migration against shared infrastructure for no risk reduction. |

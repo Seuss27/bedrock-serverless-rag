@@ -11,17 +11,27 @@
 > stayed untouched. The boundary construction itself was not discarded — it moved upstream,
 > into **ST-T2** and the F41 issue.
 
-**Sprint Goal:** This repo ends the sprint owning its **workload and nothing else**. No OIDC
-provider, no CI role, no state bucket, no lock table — and a state file that finally
-describes the system that is actually deployed.
+> **⚠ Re-scoped a second time, 2026-08-05, by BR-D23.** **Task 1 (teardown and rebuild) and
+> Task 6 (the AOSS data-plane principal) have MOVED to the new `MW` sprint**, which runs
+> immediately after ST — because BR-D20 makes `destroy → apply → verify` the acceptance test
+> every infrastructure sprint must pass, and no sprint before this one could pass it. They are
+> retained below **only as pointers**; their bodies live in
+> `sprints/MW_make_it_work/sprint_plan.md`. Do not execute them from here.
 
-**Closes:** F1 (Critical), F2, F3, F5, F39, F40, F42, F43, **F51**, and the local half of
-F47. **F4** (confused deputy) is the one original task that survives unchanged.
-**F41 is not closable here** — upstream, filed in ST-T2.
+**Sprint Goal:** This repo ends the sprint owning its **workload and nothing else**. No OIDC
+provider, no CI role, no state bucket — and state confidentiality that does not depend on who
+can read the bucket.
+
+**Closes:** F1 (Critical), F2, F3, F40, F42, F43, F48, **F56**, and the local half of F47.
+Executes **BR-D22**. **F4** (confused deputy) is the one original task that survives unchanged.
+**F41 and F58 are not closable here** — upstream, filed in ST-T2.
+*(F5, F39 and F51 moved to `MW`.)*
 
 **Dependencies:** **ST must be complete** — the transfer is done, CI authenticates from
 `glunk-works/…`, and `global-bootstrap`'s corrected `bedrock-serverless-rag` policy is
-applied. **S1 must be merged** — the plan/apply job split is what makes two roles meaningful.
+applied. **`MW` must be complete** — a `tofu plan` here is meaningless until state describes
+the deployed system, and several criteria below read plan output. **S1 must be merged** — the
+plan/apply job split is what makes two roles meaningful.
 
 **Security Considerations:** The sprint's risk profile is inverted from the usual: the danger
 is not adding a weak control, it is **deleting a working one before its replacement is
@@ -32,11 +42,15 @@ disposable. Keep the two straight: the account is shared with the organization (
 identity mistake does not fail locally, while a workload mistake costs an apply.
 
 **Risks & Blockers:**
-- **F39 makes `tofu plan` untrustworthy until Task 1 completes.** The resources exist in AWS
-  and are absent from CI's state; a plan against that state describes a system that is not
-  there. Several S3 and S4 acceptance criteria are "read the plan output" — **they are
-  invalid until Task 1 lands.**
+- **F39 makes `tofu plan` untrustworthy until `MW` completes** *(was "until Task 1
+  completes" — that task moved)*. The resources exist in AWS and are absent from CI's state; a
+  plan against that state describes a system that is not there. Several criteria here and in
+  S3+S4 are "read the plan output" — **they are invalid until `MW` lands.**
 - Human `tofu apply` needed in `bootstrap/` (BR-D1) and in `global-bootstrap`.
+- **⚠️ `bootstrap/`'s state is still the unbacked-up local file (F48) during Tasks 3 and 4.**
+  ST-T0's out-of-band backup criterion applies here too — re-take it before each apply in this
+  sprint. Task 3's `tofu state rm` against the org-shared OIDC provider is the single operation
+  in this roadmap where "the correct verb and the dangerous one" are the same string.
 - ⚠️ **Reversed 2026-08-05 (BR-D19/BR-D20).** This bullet used to read *"never resolve a state
   collision by deleting the live resource — the AOSS collection holds the embeddings."* It
   holds nothing; the corpus is empty. **Deleting the orphans and rebuilding is now the
@@ -48,48 +62,16 @@ identity mistake does not fail locally, while a workload mistake costs an apply.
 
 ## Tasks
 
-- **Task 1: Reconcile state by TEARDOWN AND REBUILD (F39, F51) — do this first**
-  - **⚠️ Reversed 2026-08-05 (BR-D19/BR-D20).** This task previously said *import, never
-    recreate*, to protect embeddings and source documents. **There are none** — the corpus is
-    empty and the collection holds nothing. Writing `import` blocks for every orphaned
-    resource would be slower, riskier, and would freeze the current bad resource names into
-    the configuration. Delete the orphans, fix the IaC, apply clean. The **only** thing
-    exempt from teardown is anything shared with the organization — the OIDC provider above
-    all (BR-D18).
-  - **This task is also the fix for F51.** A clean `destroy` → `apply` → verify cycle is the
-    project's core functional requirement (BR-D20) and has never once succeeded. Doing it
-    closes F39, and forces F5 and F46 to be fixed on the way, because the cycle cannot
-    complete while they stand.
-  - **Description:** Run `26788807269` proves the split brain: `EntityAlreadyExists: Role with
-    name personal-bedrock-kb-execution-role already exists`, and a stalled
-    `waiting for S3 Bucket (…-source) create`. The resources were created out-of-band with
-    human SSO credentials; CI's state does not contain them; **no CI apply has ever
-    succeeded.**
-    1. **Inventory what actually exists.** For each resource the module declares, check AWS
-       directly (`aws iam get-role`, `aws s3api head-bucket`,
-       `aws opensearchserverless batch-get-collection`,
-       `aws bedrock-agent list-knowledge-bases`, and the three AOSS policy APIs). Write the
-       result into `docs/hardening_roadmap.md` under F39 as a table: resource → exists in
-       AWS? → present in state? Do **not** record ARNs or the account id (BR-D4) — resource
-       *names* only.
-    2. **Delete the orphans.** For each resource that exists in AWS but not in state, remove
-       it — `aws iam delete-role`, `aws s3 rb`, `aws opensearchserverless delete-collection`,
-       and so on — after confirming from step 1 that it is genuinely this project's and
-       genuinely empty. **Never** touch the OIDC provider or anything `global-bootstrap`
-       owns.
-    3. **Apply clean** and confirm every resource is created by the pipeline, not by hand.
-    4. **Then prove the cycle**: `tofu destroy` → `tofu apply` → query the RAG endpoint
-       end-to-end. That round trip, not a passing plan, is what closes F51.
-    5. Take the opportunity the rebuild grants: this is the moment to fix the resource names
-       (S3-T6) and drop `force_destroy` questions, because nothing is being preserved.
-  - **Target Files:** `environments/ai-lab/` (whatever the rebuild requires),
-    `docs/hardening_roadmap.md`
-  - **Acceptance Criteria:** `tofu plan` in `environments/ai-lab` reports **`No changes.`**
-    against the live account. **A CI apply on `main` succeeds — the first one ever.** Then the
-    full cycle: `tofu destroy` → `tofu apply` → a `RetrieveAndGenerate` query returns a
-    result, all green, closing **F51**. The F39 inventory table exists in the roadmap and
-    contains no ARN or account id. Nothing shared with the organization was deleted — state
-    the OIDC provider was untouched, explicitly, in the PR body.
+- **Task 1: ~~Reconcile state by teardown and rebuild~~ — MOVED to `MW-T1`**
+  - **Moved 2026-08-05 (BR-D23).** This task, its F39 inventory step, its teardown, and its
+    `destroy → apply → verify` acceptance criterion now live in
+    `sprints/MW_make_it_work/sprint_plan.md` as **MW-T1**, running immediately after ST rather
+    than fourth. **Do not execute it from here** — `MW` also carries the blocking F55 gate
+    (prove the deploy identity can rebuild *before* deleting anything) that this version
+    lacked, which is the whole reason it moved. S3-T6's resource-name fix folded into it.
+  - **What this sprint still assumes:** that `MW` completed, so `tofu plan` in
+    `environments/ai-lab` reports `No changes.` and a CI apply has succeeded at least once.
+    If that is not true, stop — every plan-reading criterion below is invalid.
 
 - **Task 2: Adopt `global-bootstrap`'s roles, then retire the local ones (F1, F2, F3, F42)**
   - **Description:** ST-T2 already added `plan_role = true` and
@@ -105,15 +87,31 @@ identity mistake does not fail locally, while a workload mistake costs an apply.
     3. **Only then delete**, in `bootstrap/`: `aws_iam_role.github_actions_role`,
        `aws_iam_role_policy.state_access_policy` — the F1 escalation — and
        `var.role_name` / `var.github_repo_path`. Human apply.
-    F2 and F3 are closed by adoption rather than by fixing: the upstream role's trust is
-    already `StringEquals` over an enumerated subject list, and the plan role already exists
-    as a separate, read-only identity with its own `pull_request`-only trust.
+    F2 and F3 are closed by adoption rather than by fixing — **but not on the operator this
+    task previously claimed.** ⚠️ This body used to assert *"the upstream role's trust is
+    already `StringEquals` over an enumerated subject list."* **It is not.** Live
+    `global-bootstrap/main.tf` uses **`StringLike`** on `…:sub` for the **apply** role;
+    `StringEquals` appears only on the **plan** role, where a comment says so explicitly. The
+    values are wildcard-free today, so it is functionally equivalent — but **F2's entire
+    substance is that in IAM `StringLike`, `*` matches `:` too**, so closing F2 on an operator
+    the upstream code does not use means the first `extra_oidc_subjects` entry containing a `*`
+    globs silently. The `StringLike` → `StringEquals` change is filed with the F41 upstream
+    issue (§ 9.4) and is a **precondition of closing F2**, not a nice-to-have. F3's half stands:
+    the plan role does exist as a separate read-only identity — subject to **F56**, which ST-T2
+    must have resolved.
   - **Target Files:** `bootstrap/oidc-setup.tf`, `bootstrap/state-backend.tf`,
     `.github/workflows/deploy.yml`
   - **Acceptance Criteria:** `grep -rn 'iam:CreateRole\|iam:PutRolePolicy' bootstrap/`
     returns nothing. `aws iam get-role --role-name github-actions-deploy-role` returns
-    `NoSuchEntity`. `deploy.yml` contains no `||` fallback. A full PR→merge→approve→apply
-    cycle has run green on the two upstream roles.
+    `NoSuchEntity`. A full PR→merge→approve→apply cycle has run green on the two upstream roles.
+    **The adopted role's trust condition uses `StringEquals`** — read it from live AWS, not from
+    the upstream HCL.
+    **⚠️ STRENGTHENED (F56).** The old criterion was *"`deploy.yml` contains no `||` fallback."*
+    That is **satisfied by the dangerous unblock**: pointing the plan job at
+    `vars.AWS_OIDC_ROLE_ARN` removes the fallback *and* gives a push-triggered, un-gated job an
+    apply-capable role — **F13 restored in the change that closes it**. Replace it with:
+    **"the plan job authenticates as the *plan* role, evidenced by a run link, and the apply job
+    as the apply role."** Identity is verified from the run, never inferred from the file.
 
 - **Task 3: Hand the OIDC provider upstream (F40, BR-D18)**
   - **Description:** The stopgap `prevent_destroy` from ST-T1 stays until this lands. The
@@ -148,16 +146,45 @@ identity mistake does not fail locally, while a workload mistake costs an apply.
        `var.projects` map key exactly, or the role's `s3:prefix` condition denies access —
        and the failure reads as a backend/credentials error, not a naming one.
     2. `tofu init -migrate-state`, answer yes, then **`tofu plan` must report `No changes.`**
-       Anything else means the migration did not carry the state Task 1 just reconciled.
-    3. **Only then** retire `aws_s3_bucket.tofu_state` and `aws_dynamodb_table.tofu_locks` in
-       `bootstrap/`. Both carry (or should carry) `prevent_destroy`; removing it is a
-       deliberate, separate, human-applied change. **Keep the old bucket for at least one
-       successful apply cycle on the new backend** before deleting anything.
-  - **Target Files:** `environments/ai-lab/backend.tf`, `bootstrap/state-backend.tf`
+       Anything else means the migration did not carry the state `MW` just reconciled.
+    3. **Adopt OpenTofu native state encryption (BR-D22)** — in the same change, because the
+       state that lands in the org bucket is versioned **forever** and this is the last moment
+       it is cheap. Add a `terraform { encryption { … } }` block with an `aws_kms` key provider
+       to **both roots** (`environments/ai-lab` and `bootstrap/`).
+       **Why this and not SSE.** SSE-S3 protects the object at rest in S3 and nothing else — it
+       does not protect state from anyone who can legitimately `s3:GetObject` it, and after
+       ST-T2 that set includes **a plan role assumable from any pull request**, whose state-read
+       policy grants exactly that on exactly this prefix. Client-side encryption closes it;
+       SSE-KMS would not have. This is also what makes the BR-D21 secrets pattern honest — a
+       `data.aws_ssm_parameter` value **is in state** (§ 9.5), so the encryption block must land
+       **before** any SSM canary runs anywhere.
+       **`required_version`:** native encryption needs OpenTofu ≥ 1.7, so
+       `environments/ai-lab/providers.tf`'s existing `>= 1.8.0` already covers it — **no bump
+       needed**. But **`bootstrap/providers.tf`'s `terraform {}` block declares no
+       `required_version` at all**; give it one.
+       **⚠️ `use_lockfile` is NOT adopted and `dynamodb_table` STAYS** (BR-D22, amended). Step 1
+       repoints the lock table at the org's `global-tofu-lock`; it does **not** remove it. That
+       table is shared with `bounty-infra`, `tri-loop` and `resume-optimizer`, so retiring it
+       would force every consumer repo to raise its OpenTofu floor and rewrite its backend block
+       in lockstep — a coordinated multi-repo migration against shared infrastructure for no
+       risk reduction. *(Non-blocking check while you are here: Terraform deprecated
+       `dynamodb_table` in 1.11 in favour of `use_lockfile`. Whether **OpenTofu** followed is
+       unverified — read the changelog and record the answer. It does not change the decision.)*
+    4. **Only then** retire `aws_s3_bucket.tofu_state` and `aws_dynamodb_table.tofu_locks` in
+       `bootstrap/` — this repo's *own* bucket and lock table, not the org's. Both carry (or
+       should carry) `prevent_destroy`; removing it is a deliberate, separate, human-applied
+       change. **Keep the old bucket for at least one successful apply cycle on the new
+       backend** before deleting anything.
+  - **Target Files:** `environments/ai-lab/backend.tf`, `environments/ai-lab/providers.tf`,
+    `bootstrap/state-backend.tf`, `bootstrap/providers.tf`
   - **Acceptance Criteria:** `tofu plan` reports `No changes.` from the new backend. A full
-    apply cycle has succeeded against it. The old bucket is deleted only after that, and the
-    PR body states the date of the last successful apply on the old backend. `bootstrap/`
-    contains no S3 or DynamoDB resource.
+    apply cycle has succeeded against it. **The state object in the org bucket is
+    client-side-encrypted — verified by `aws s3 cp`-ing it and confirming it does not parse as
+    JSON**, which is the only check that distinguishes native encryption from SSE. Both roots
+    declare a `required_version`. `environments/ai-lab/backend.tf` still declares
+    `dynamodb_table`, now pointing at `global-tofu-lock`. The old bucket is deleted only after
+    that, and the PR body states the date of the last successful apply on the old backend.
+    `bootstrap/` contains no S3 or DynamoDB resource.
 
 - **Task 5: Close the confused-deputy gap on the KB role (F4, issue #6)**
   - **Description:** *(Unchanged from the original plan — this is workload IAM, which stays
@@ -172,45 +199,24 @@ identity mistake does not fail locally, while a workload mistake costs an apply.
     and `ArnLike aws:SourceArn`. `tofu plan` shows an in-place update, no role replacement, no
     cycle error. `Closes: #6` in the PR body.
 
-- **Task 6: Make the AOSS data-plane principal explicit (F5)**
-  - **Description:** *(Re-scoped: the finding is now confirmed live, not predicted.)* Run
-    `26788807269` shows `create_index.py` failing `AuthorizationException(403, '')` six times
-    — because `data.aws_arn.current_identity.arn` had resolved to a **human SSO session** when
-    the policy was last applied, so the CI role has no data-plane access at all. This is not a
-    latent risk; it is the reason the pipeline has never worked.
-    Remove `data.aws_arn.current_identity` and replace it with an explicit input:
-    ```hcl
-    variable "data_plane_principal_arns" {
-      type        = list(string)
-      description = "IAM role ARNs granted data-plane access to the vector collection. Must be role ARNs (arn:aws:iam::…:role/…), never sts assumed-role ARNs."
-      default     = []
-      validation {
-        condition     = alltrue([for a in var.data_plane_principal_arns : can(regex("^arn:aws:iam::[0-9]{12}:role/", a))])
-        error_message = "Each principal must be an IAM role ARN, not an sts assumed-role ARN."
-      }
-    }
-    ```
-    `Principal` becomes
-    `concat([aws_iam_role.bedrock_kb_role.arn], var.data_plane_principal_arns)`, and
-    `environments/ai-lab` passes **the upstream apply role** and the human operator's SSO
-    role. Both are BR-D4 restricted: source them from `.env` locally and a repository variable
-    in CI, never a committed `.tfvars`.
-  - **Target Files:** `modules/aws-bedrock-rag/iam.tf`,
-    `modules/aws-bedrock-rag/variables.tf`, `environments/ai-lab/main.tf`,
-    `environments/ai-lab/variables.tf`
-  - **Acceptance Criteria:** `grep -rn 'aws_arn' modules/ environments/` returns nothing.
-    **`create_index.py` completes on the first attempt in a CI run** — no retries, no 403.
-    That is the criterion; a passing `tofu validate` proves nothing here. The `validation`
-    block rejects an `sts`-shaped ARN (verify with a deliberate bad value). Two plans — one
-    local, one CI — produce the same access-policy diff.
+- **Task 6: ~~Make the AOSS data-plane principal explicit~~ — MOVED to `MW-T2`**
+  - **Moved 2026-08-05 (BR-D23).** The `data_plane_principal_arns` variable, its validation
+    block, and the `create_index.py`-must-succeed acceptance criterion now live in
+    `sprints/MW_make_it_work/sprint_plan.md` as **MW-T2**. **Do not execute it from here.**
+    F5 is the reason the pipeline has never worked, so it belongs in the sprint whose goal is
+    making it work — not two sprints after the criteria that depend on it.
+  - **What this sprint still assumes:** that `MW-T2` landed, so the CI role has AOSS data-plane
+    access and `create_index.py` has succeeded at least once in CI.
 
 ---
 
 ## Definition of Done
 
-`gates.green` passes. Every required check green. **A CI apply has succeeded** — for the
-first time in this repo's history — against the org backend, on the upstream roles, with
-`create_index.py` succeeding without retry. `bootstrap/` contains no OIDC provider, no role,
+`gates.green` passes. Every required check green. **A CI apply has succeeded against the org
+backend, on the upstream roles.** *(The "first time in this repo's history" apply is now `MW`'s
+Definition of Done, not this sprint's — `MW` runs first. What this sprint proves is that the
+cycle still works after the identity and backend swap, which is a different and equally
+necessary claim.)* The state object in the org bucket is client-side encrypted (BR-D22). `bootstrap/` contains no OIDC provider, no role,
 no bucket, no table. `/critic-gate` has run: `security-critic` (every task is a trust
 boundary or a credential scope) and `architect` (the adopt-verify-delete ordering is where a
 logic error becomes an outage).
@@ -255,10 +261,11 @@ logic error becomes an outage).
   in the same account (F47) and none is disposable. Task 1 deletes freely; Tasks 2–4 still
   move adopt-verify-delete. A coder that carries the teardown mindset into the identity tasks
   will delete a role before its replacement is proven and take CI down for the organization.
-- **F39 gates S3 and S4, not just this sprint.** Both use "read the `tofu plan` output" as an
-  acceptance criterion — for replacements, for `No changes.`, for tag-update safety. Against a
-  split-brain state those criteria are checking a fiction. Task 1 is first for that reason,
-  and the dependency is recorded in the roadmap's ordering hazards rather than only here.
+- **F39 gates this sprint AND S3+S4 — which is why it moved out of here entirely.** All three
+  use "read the `tofu plan` output" as an acceptance criterion, and against a split-brain state
+  those criteria check a fiction. The original plan made it *this sprint's* Task 1, which still
+  left S1 building a pipeline around an apply that had never worked. BR-D23 moved it to **`MW`**,
+  immediately after ST. The dependency is recorded in the roadmap's ordering hazards.
 - **`No changes.` is the reconciliation criterion, not a successful apply.** An apply can
   succeed while state and reality still disagree (it simply creates the difference). Only a
   clean plan proves convergence.
@@ -266,16 +273,18 @@ logic error becomes an outage).
   each role with `s3:prefix = <project>/*`; a `key` of `bedrock-serverless-rag/terraform.tfstate`
   works and `ai-lab/terraform.tfstate` silently does not — and the resulting `AccessDenied`
   during `tofu init` reads as a credentials problem, which is a long way from the truth.
-- **Task 6's acceptance criterion is a successful `create_index.py` run, not a valid plan.**
-  F5 has been latent in the committed IaC for months while `tofu validate` passed every time.
-  The only evidence that matters is the data-plane call succeeding.
+- **`MW-T2`'s acceptance criterion is a successful `create_index.py` run, not a valid plan.**
+  *(Was Task 6 here.)* F5 has been latent in the committed IaC for months while `tofu validate`
+  passed every time. The only evidence that matters is the data-plane call succeeding.
 - *Retiring the local state bucket while it is the backend is a bootstrap paradox* — hence
   migrate first (Task 4 step 2), prove an apply cycle on the new backend, and only then
   remove the resource that used to hold the state describing itself.
-- *F46 (the retry loop masking the 403) is not fixed here* — it belongs to S4-T4 with the rest
-  of `create_index.py`. Task 6 removes the *cause*; the misleading retry semantics remain
-  until S4. Worth knowing, because after Task 6 the loop will simply stop being exercised,
-  which is not the same as being correct.
+- *F46 (the retry loop masking the 403) — **this objection was upheld and acted on**.* The
+  original text read: *"not fixed here — it belongs to S4-T4 … after Task 6 the loop will simply
+  stop being exercised, which is not the same as being correct."* Correct, and it was an argument
+  for **moving F46**, not for accepting the gap. BR-D23 moved the retry fix into **`MW-T3`**, so
+  the cause and the misleading semantics are now fixed in the same sprint — which also makes that
+  sprint's own debugging loop twelve minutes shorter per iteration.
 
 **Execution**
 

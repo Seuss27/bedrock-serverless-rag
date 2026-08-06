@@ -2,6 +2,25 @@
 
 # SD — Development container
 
+> **⚠ DEFERRED, 2026-08-05, by BR-D23 — with a stated precondition. Do not execute this sprint.**
+>
+> **The precondition is Docker on the workstation, which does not exist today.** That makes SD
+> undeliverable regardless of merit — a fact, not a judgement, and it is why this is "deferred"
+> rather than "optional": there is nothing to re-argue each sprint. **Revisit when Docker is
+> available**, and not before.
+>
+> On the merits, recorded so the decision is not re-litigated from scratch:
+>
+> - It creates a **permanent obligation** (BR-D15: every pin kept *equal* to CI's, forever, on
+>   every future tool bump) — the largest capability investment in the roadmap.
+> - Against the smallest demonstrated pain. The frictions actually **observed** are two: CRLF
+>   (already fixed by `.gitattributes` in S0-T5) and the `-backend=false` wrinkle (already two
+>   lines in `CLAUDE.md`).
+> - **It was never actually parallel.** Three of its five tasks read values out of files S1
+>   creates, so the "runs alongside everything" premise in the header below is wrong.
+>
+> **If it is ever picked up: it must not gate S5.** S5's dependency on it is removed.
+
 **Sprint Goal:** Make the green gate reproducible. `Reopen in Container` gives any
 contributor — and any agent session — the exact pinned toolchain the CI checks run, on one
 Linux base, so local results and CI results are the same result.

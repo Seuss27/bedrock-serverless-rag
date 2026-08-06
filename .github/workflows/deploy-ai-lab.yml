@@ -20,12 +20,12 @@ jobs:
       run:
         working-directory: environments/ai-lab
     steps:
-      - uses: actions/checkout@v4
-      - uses: opentofu/setup-opentofu@v1
+      - uses: actions/checkout@v7
+      - uses: opentofu/setup-opentofu@v2
 
       # CONFIGURE CREDENTIALS FIRST
       # This provides the necessary OIDC tokens for the S3 backend to initialize
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
           aws-region: us-east-1
@@ -46,7 +46,7 @@ jobs:
           quiet: true
 
       - name: Python Security & Linting
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v7
         with: {python-version: '3.11'}
       - run: |
           pip install ruff bandit
@@ -70,10 +70,10 @@ jobs:
         # "No value for required variable", same as any other missing required input.
         TF_VAR_budget_notification_email: ${{ secrets.BUDGET_NOTIFICATION_EMAIL }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
       
       # 1. Setup Python
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: '3.11'
           cache: 'pip'
@@ -81,11 +81,11 @@ jobs:
       - run: pip install -r requirements.txt
       
       # 2. Setup OpenTofu
-      - uses: opentofu/setup-opentofu@v1
+      - uses: opentofu/setup-opentofu@v2
       
       # 3. CONFIGURE CREDENTIALS FIRST
       # This provides the necessary OIDC tokens for the S3 backend to initialize
-      - uses: aws-actions/configure-aws-credentials@v4
+      - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
           aws-region: us-east-1

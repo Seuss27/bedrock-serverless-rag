@@ -64,20 +64,22 @@ still `OPEN`, and the merge is yours.
   review**), dangling `§ 8` / `S2-T2` / `S31` cross-references, the orphaned `Closes:` lines,
   and the `gh label edit` / `gh issue list --state all` command forms.
 
-**Left deliberately open, and both need your call rather than a coder's:**
+**The two agent-governing files are now done too** (`[M2]` §§ 3 and 7), in their own commit —
+they change what an agent may *do*, not what a document says, which is why they were not bundled
+into a docs commit.
 
-1. **`.claude/settings.json`'s deny list** still fails open on `tofu state`, `tofu import` and
-   `tofu init -migrate-state` — the three verbs S2-T3/T4 actually use against org-shared state,
-   and the ones the plan itself calls *"the correct verb and the dangerous one"* — and on
-   `gh api -X DELETE`. **And its `PowerShell(...)` entries need verifying as a real registered
-   tool name or deleting**; if they are not one, they read as protection while being inert,
-   which is worse than a known gap. *(The `Invoke-Tofu.ps1` entry that item also called for is
-   moot — the wrapper was deleted, which removes the surface rather than denying it.)*
-2. **`.gitignore`** still needs F54's `.env*` + `!.env.example`, plus `tfplan`, `plan.json`
-   (S1-T4 creates both by those exact names) and `.venv/`.
-
-Both are live-behaviour changes to files that govern what an agent may do, which is why they are
-not bundled into a docs commit.
+- **`.claude/settings.json`** now denies the destructive `tofu state` subcommands (`rm`, `mv`,
+  `push`, `replace-provider`), `tofu import`, `tofu init -migrate-state`, and `gh api` DELETE in
+  both spellings — each for **both** the `Bash` and `PowerShell` tools. **`PowerShell(...)` was
+  verified as a real tool name**, not a placebo, so the pre-existing entries do bind.
+  **Deliberately not denied:** `tofu state list`/`show` (read-only, wanted for `MW`'s inventory)
+  and `gh api` PUT/PATCH (S0-T2 and ST-T4 need them, and a deny is a hard block).
+  **⚠️ Known partial coverage:** the patterns are prefix matches, so
+  `tofu init -backend-config=… -migrate-state` is **not** caught — blanket-denying `tofu init`
+  was rejected because `tofu init -backend=false` is the green gate.
+- **`.gitignore`** — **F54 is CLOSED early**, plus `tfplan`, `plan.json` and `.venv/`. Verified
+  with `git check-ignore` **once per path**: that command exits 0 if *any* argument is ignored,
+  so the multi-path form could not have proven what it claimed.
 
 **`CLAUDE.md`'s Actions rules are still missing four** (`[M2]` § 4) — most importantly that *a
 `pull_request`-triggered job runs the workflow file from the PR branch*, which is what makes F3

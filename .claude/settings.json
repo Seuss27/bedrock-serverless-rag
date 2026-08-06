@@ -25,7 +25,23 @@
       "Bash(tofu apply:*)",
       "PowerShell(tofu apply:*)",
       "Bash(tofu destroy:*)",
-      "PowerShell(tofu destroy:*)"
+      "PowerShell(tofu destroy:*)",
+      "Bash(tofu state rm:*)",
+      "PowerShell(tofu state rm:*)",
+      "Bash(tofu state mv:*)",
+      "PowerShell(tofu state mv:*)",
+      "Bash(tofu state push:*)",
+      "PowerShell(tofu state push:*)",
+      "Bash(tofu state replace-provider:*)",
+      "PowerShell(tofu state replace-provider:*)",
+      "Bash(tofu import:*)",
+      "PowerShell(tofu import:*)",
+      "Bash(tofu init -migrate-state:*)",
+      "PowerShell(tofu init -migrate-state:*)",
+      "Bash(gh api -X DELETE:*)",
+      "PowerShell(gh api -X DELETE:*)",
+      "Bash(gh api --method DELETE:*)",
+      "PowerShell(gh api --method DELETE:*)"
     ]
   }
 }

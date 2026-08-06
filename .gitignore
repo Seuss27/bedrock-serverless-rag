@@ -6,14 +6,28 @@
 .tofu/
 
 
-# Credentials and local environment variables
-.env
+# Credentials and local environment variables.
+# `.env*` not `.env` (F54): `.env.local`, `.env.bak`, `.env.prod`, `.env.save` and every
+# per-directory equivalent were all committable. Found by making exactly such a backup while
+# cleaning F52 -- taking a copy before editing a secrets file is what a careful person does.
+.env*
+!.env.example
 aws_creds
 
-# Python environment
+# OpenTofu plan artifacts. S1-T4 creates both by these exact names, and a saved plan renders
+# every value BR-D4 forbids on a public repo -- account id, role ARNs, bucket names, the
+# collection endpoint. Ephemeral on a runner; a disclosure in a working tree.
+tfplan
+plan.json
+
+# Python environment. Both spellings: `venv/` does NOT match `.venv/`, and
+# `environments/ai-lab/.venv/` is ignored today only because `python -m venv` happens to write
+# its own `.gitignore` inside it. Recreate it with a tool that does not and ~4,000 files
+# become stageable.
 __pycache__/
 *.pyc
 venv/
+.venv/
 
 # way-of-working dev-workflow state.
 # `.ai/next-steps.md` and `.ai/project.yml` ARE tracked -- they are the shared cursor and

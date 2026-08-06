@@ -91,8 +91,30 @@ rather than invent one: `ruleset` (no branch protection exists yet — S0) and
 
 ## Local: GitHub Actions security
 
-- **Never interpolate `${{ }}` inline into a `run:` block.** Pass values via `env:`, quote
-  every expansion, and build JSON with `jq -n --arg` — never string concatenation.
+- **⚠️ A `pull_request`-triggered job runs the workflow file *from the PR branch*.** This is
+  the rule the rest of this section depends on, and it is why **F3** ("one role for plan and
+  apply") is not a least-privilege smell but **arbitrary command execution with
+  account-admin-capable credentials**. `deploy-ai-lab.yml` runs on `pull_request` and assumes
+  `vars.AWS_OIDC_ROLE_ARN`, whose live trust is `StringLike repo:<owner>/<repo>:*` — which
+  admits `:pull_request`. So **anyone who can push a branch can edit the `run:` block and get
+  `iam:CreateRole` on `*`** in the account holding bounty-infra's findings archive. Any change
+  that gives a `pull_request` job a credential is a change to who can execute code as that
+  credential.
+- **Never interpolate `${{ }}` inline into a `run:` block** — *or into an
+  `actions/github-script` `script:` block, which is `run:`-equivalent for injection.* Pass
+  values via `env:` (read them as `process.env.X` in `github-script`), quote every expansion,
+  and build JSON with `jq -n --arg` — never string concatenation. **A grep that only checks
+  `run:` positions will pass a `github-script` step containing
+  `${{ github.event.pull_request.body }}`** — attacker-controlled text, straight into a
+  JavaScript context.
+- **`${{ }}` inside `if:` is also injectable** when the expression embeds attacker-controlled
+  text (a PR title, a branch name, an issue body). "Only in `env:`/`with:`/`if:`" is a rule
+  about *where*, not about *what* — the value's provenance still matters.
+- **Never `pull_request_target`, `workflow_run`, or `issue_comment`/chatops triggers.** All
+  three execute in the **base-repo** context with the full token and secrets, which is exactly
+  the property `pull_request` deliberately lacks. `workflow_run` is the one someone reaches
+  for to post a plan summary back onto a PR without an artifact — don't; that is S1's accepted
+  residual and it stays accepted.
 - `set -euo pipefail` at the top of any non-trivial `run:` block.
 - Pin third-party actions to a **commit SHA**, not a floating tag — a mutable tag on an
   action that receives OIDC claims is a credential handoff to whoever moves the tag. No
@@ -105,7 +127,7 @@ rather than invent one: `ruleset` (no branch protection exists yet — S0) and
 - **A required check on a path-filtered workflow deadlocks.** `deploy-ai-lab.yml` filters on
   `paths:` today; a PR touching only `docs/` would leave the required check pending forever
   and the PR unmergeable. The filter comes off in the same change that makes a job required.
-- **Never `pull_request_target`.** Fork PRs get no secrets, and that is the correct outcome.
+- Fork PRs get no secrets, and that is the correct outcome — see the trigger rule above.
 - Grant the **narrowest `permissions:`** that works and delete unused ones.
 - **Secrets and identity never reach a workflow log.** No `aws sts get-caller-identity`
   echo, no `set -x` around a credentialed step, no raw plan dump (BR-D4).

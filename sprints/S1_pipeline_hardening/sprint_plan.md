@@ -257,11 +257,24 @@ admin-capable apply until S2 lands.
     step: no `set -x`, no `env` dump, no `aws sts get-caller-identity` echo, no
     `tofu output` without `-json | jq` selecting named fields, no `tofu show` of state. Add
     `set -euo pipefail` to the top of every multi-line `run:` block. Confirm no `${{ }}`
-    appears inside any `run:` block anywhere in the repo — pass values through `env:`.
+    appears inside any `run:` block **or any `actions/github-script` `script:` block** anywhere
+    in the repo — pass values through `env:` and read them as `process.env.X`.
   - **Target Files:** `.github/workflows/ci.yml`, `.github/workflows/deploy.yml`
   - **Acceptance Criteria:** `grep -n '\${{' .github/workflows/*.yml` shows matches only in
     `env:`, `with:`, `if:`, `uses:` and `concurrency:` positions — never inside a `run:`
     block. Every `run: |` block's first line is `set -euo pipefail`.
+    **⚠️ That grep is NOT sufficient on its own, and the gap is exploitable.** A
+    `actions/github-script` step's payload sits under `with:` → `script:`, so the criterion as
+    written **passes** a step containing `${{ github.event.pull_request.body }}` — an attacker
+    -controlled string interpolated straight into a JavaScript context, which is
+    `run:`-equivalent for injection. **Add a second, explicit check:**
+    `grep -n -A20 'uses:.*actions/github-script' .github/workflows/*.yml` must show **no
+    `${{ }}` inside any `script:` body**. Also treat `${{ }}` in an `if:` as suspect rather
+    than safe-by-position whenever the expression embeds attacker-controlled text (a PR title,
+    a branch name, an issue body) — the rule is about the value's provenance, not its position.
+    **Whether `zizmor` (S1-T3) catches the `github-script` case is not assumed here** —
+    confirm it against a deliberately-planted test case before relying on it instead of the
+    grep, and record which one is the control.
 
 - **Task 7: Update the drift detector and the schema**
   - **Description:** Append this sprint's new gating checks to the ruleset, to

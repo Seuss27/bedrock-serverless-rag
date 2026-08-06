@@ -81,11 +81,21 @@ into a docs commit.
   with `git check-ignore` **once per path**: that command exits 0 if *any* argument is ignored,
   so the multi-path form could not have proven what it claimed.
 
-**`CLAUDE.md`'s Actions rules are still missing four** (`[M2]` § 4) — most importantly that *a
-`pull_request`-triggered job runs the workflow file from the PR branch*, which is what makes F3
-a code-execution bug rather than a least-privilege smell. Also: `workflow_run` and
-`issue_comment` are unbanned, and `actions/github-script`'s `script:` block is `run:`-equivalent
-for injection but **S1-T6's acceptance grep would pass it**. Worth doing before S1.
+**`CLAUDE.md`'s Actions rules are now complete** (`[M2]` § 4) — the last outstanding review
+item. The load-bearing addition: *a `pull_request`-triggered job runs the workflow file **from
+the PR branch***, which is what makes **F3** arbitrary code execution with
+account-admin-capable credentials rather than a least-privilege smell. F3 is sharpened to say so
+(severity unchanged — it was already right). Also banned `workflow_run` and `issue_comment`
+alongside `pull_request_target`; covered `actions/github-script`'s `script:` block; and noted
+that `${{ }}` in an `if:` is injectable when the expression embeds attacker-controlled text.
+**S1-T6's acceptance grep was exploitable as written and now carries a second check** — a
+`github-script` payload sits under `with:` → `script:`, so the original criterion *passed* a
+step containing `${{ github.event.pull_request.body }}`.
+
+**Every item from the review is now closed.** The one thing carried forward as a task rather
+than a fix: S1-T3 must confirm whether `zizmor` catches the `github-script` case **against a
+deliberately-planted test case**, and record which control is the real one — the grep or the
+scanner. It is not assumed.
 
 ## Sprint order (BR-D23)
 

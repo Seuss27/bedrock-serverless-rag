@@ -1,7 +1,6 @@
 name: 🐛 Infrastructure Bug / Incident
 description: Report a broken service, deployment failure, or misconfiguration.
-title: "[Env] Component: Brief description of the issue"
-labels: ["type/bug", "status/triage"]
+labels: ["bug", "status/triage"]
 body:
   - type: dropdown
     id: environment
@@ -9,10 +8,8 @@ body:
       label: Target Environment
       description: Which environment is experiencing this issue?
       options:
-        - Production
-        - Staging
-        - Development
-        - Global/Platform
+        - ai-lab
+        - global
     validations:
       required: true
   - type: textarea
@@ -27,5 +24,8 @@ body:
     id: logs
     attributes:
       label: Logs or Error Messages
-      description: Paste relevant logs, metric graphs, or command outputs.
+      description: >-
+        Paste relevant logs, metric graphs, or command outputs. This repo is public --
+        redact the account id, role ARNs, bucket names, and the AOSS collection endpoint
+        before pasting; never paste raw `tofu plan` output.
       render: shell

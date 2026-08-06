@@ -1,0 +1,16 @@
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ["*"]
+    # Without this, Dependabot's default title ("Bump the actions group with N updates")
+    # fails pr-title.yml's Conventional Commits grammar -- capital letter, no type prefix
+    # -- and the bot-name length exemption in that workflow only waives the length check,
+    # not the grammar. This makes the title "chore(deps): bump the actions group ...".
+    commit-message:
+      prefix: chore
+      include: scope

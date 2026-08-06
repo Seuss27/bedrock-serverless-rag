@@ -28,28 +28,34 @@ The planning-review gate is **closed** — the human signed off on a reshaped ST
 - **T2a′ done** — `path = "/bedrock-rag/"` on the module's role, so **MW** rebuilds at the
   right path and it is not replaced twice. The `permissions_boundary` half moved to S2.
 
+**`ST-T2′` is prepared.** Upstream PR **`glunk-works/global-bootstrap#5`** deletes the
+`bedrock-serverless-rag` entry from `var.projects` along with `bedrock_rag_policy` and its
+attachment; `tofu validate` and `tofu fmt -check -recursive` pass upstream. The org-wide F41
+issue is filed as **`glunk-works/global-bootstrap#6`** and linked from roadmap § 9.4.
+
 ## Next
 
-**`ST-T2′`** — prepare the upstream **deletion** PR against `glunk-works/global-bootstrap`:
-drop the `bedrock-serverless-rag` entry from `var.projects`, and drop `bedrock_rag_policy`
-with its attachment. **Open the org-wide F41 issue in the same visit** and link it from
-roadmap § 9.4. **Model: `opus` (architect).**
+**A human merges and applies `glunk-works/global-bootstrap#5`** (admin SSO, never CI —
+BR-D1). Then verify against **live AWS**, not the merged HCL:
 
-An agent may prepare the PR; **a human must apply it.** Then verify
-`aws iam get-role --role-name github-actions-bedrock-serverless-rag` returns `NoSuchEntity`
-against live AWS — *and only then* start T3.
+```
+aws iam get-role --role-name github-actions-bedrock-serverless-rag   # must be NoSuchEntity
+```
 
-⚠️ **Do not paste the AWS account id into that PR.** `global-bootstrap` is public too (BR-D4).
+Record the applied timestamp in ST's PR body. **Only then does `ST-T3` start.**
+**Model: `opus` (architect).**
 
 ## Open gates and blockers
 
-**HITL Gate: NONE OPEN** for the next action. Three human-only acts remain downstream:
+**HITL Gate: OPEN.** The next action is human-only. Three remain, in order:
 
-1. the upstream `tofu apply` of the deletion;
+1. **merge + `tofu apply`** of `global-bootstrap#5`;
 2. **T3's two `bootstrap/` applies (widen, then narrow)** — **blocked on F48**: an
    off-workstation, verified-restorable copy of `bootstrap/terraform.tfstate` **does not yet
    exist**, and that file is the only record of the org-shared OIDC provider;
 3. **the transfer itself** — a Settings UI action, irreversible in practice.
+
+An agent may prepare files and draft commands for all three; it may execute none of them.
 
 ⚠️ **T3's narrow must complete in the same session as the transfer.** GitHub usernames are
 reclaimable, so the widen leaves a dangling-subject trust policy standing until it does.

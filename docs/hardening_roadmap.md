@@ -645,6 +645,22 @@ findings archive** (F47). Raise it as an issue on `glunk-works/global-bootstrap`
 permissions-boundary construction as the proposed fix, so the two repos converge on one
 pattern instead of two.
 
+> ✅ **FILED 2026-08-06 — `glunk-works/global-bootstrap#6`.** Carries the five-point corrected
+> construction (role path, boundary condition, `PassRole` scoped by `Resource` **and**
+> `PassedToService`, the verbs the boundary condition cannot cover, and `iam:CreatePolicy`
+> scoped to a policy path) plus the inline-policy consequence of denying
+> `iam:CreatePolicyVersion`. Deliberately contains **no exploit chain and no account
+> identifiers** — both repositories are public.
+>
+> **Now three policies, not four.** `glunk-works/global-bootstrap#5` removes
+> `bedrock_rag_policy` and this project's `var.projects` entry outright — **ST-T2′**, closing
+> **F45** by removal. `bounty_infra_policy`, `tri_loop_policy` and `resume_optimizer_policy`
+> still carry the pattern, and **deleting one project's entry is not fixing it.** ⚠️ Do not
+> read F41 as reduced in severity because this repo stopped being one of its instances.
+>
+> Filed alongside it, per F2 and BR-D22: the `StringLike` → `StringEquals` change on the apply
+> role's trust, and the key-provider choice for native state encryption.
+
 Note the asymmetry that makes this concrete: `global-bootstrap`'s `plan_roles.tf` already
 carries an explicit `DenyBountyFindingsDataAccess` statement on the **plan** roles, with a
 comment explaining that it makes reading third-party vulnerability data structurally

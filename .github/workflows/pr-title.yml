@@ -1,0 +1,86 @@
+name: PR title
+
+# Ported from glunk-works/bounty-infra's `pr-title.yml` (CLAUDE.md: read the sibling repo's
+# workflows before designing a governance/CI pattern here, so the two stay diffable).
+#
+# Merges here are squashes, so the PR title becomes the commit subject on `main` — it is
+# the only message that survives, and therefore the only one worth enforcing. WIP commits
+# inside a branch stay free-form.
+#
+# WHY THIS IS ITS OWN WORKFLOW AND NOT A JOB IN deploy-ai-lab.yml — this is the load-bearing
+# part:
+#   * A title check needs `edited` to fire, or a bad title could only be cleared by
+#     pushing a dummy commit.
+#   * But `edited` inside deploy-ai-lab.yml would let a prose-only title edit wake — and,
+#     under a cancelling concurrency group, CANCEL — an in-flight or already-green run of
+#     the heavier tofu jobs.
+#   * A cancelled-then-replaced run can report `skipped`, and `skipped` satisfies a
+#     required check rather than failing it. The PR would then merge with the real gates
+#     having silently never run.
+# Keeping this separate means deploy-ai-lab.yml never sees `edited` at all, and this check
+# gates nothing downstream: a bad title costs a cheap re-run, never a skipped security gate.
+#
+# Required checks match by check-run name = job id, so the job below is bare `pr-title`
+# with no `name:` override (CLAUDE.md).
+
+on:
+  pull_request:
+    # `edited` is load-bearing: without it, a title fix could not turn this check green.
+    # `synchronize`/`reopened` guarantee a check-run on every head SHA, which is what a
+    # required check needs in order to ever resolve.
+    types: [opened, edited, reopened, synchronize]
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# Reads the title straight off the event payload — no checkout, no API call, so this
+# workflow needs no token scopes at all.
+permissions: {}
+
+jobs:
+  pr-title:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate Conventional Commits title
+        # The title rides `env:` rather than being interpolated into the script — a PR
+        # title is attacker-controllable text, and inlining `${{ }}` into a `run:` block
+        # is exactly the injection class CLAUDE.md forbids without exception.
+        env:
+          TITLE: ${{ github.event.pull_request.title }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          # No `style` type: this repo's grammar deliberately omits it (F36). Scope
+          # class is lower-case only — this repo's commit history uses lower-case
+          # scopes (`docs(ai):`, `chore(ci):`), not bounty-infra's upper-case sprint-id
+          # convention, so the upstream widening does not apply here.
+          pattern='^(feat|fix|docs|test|refactor|perf|chore|ci|revert)(\([a-z0-9._/-]+\))?!?: [a-z].*[^.]$'
+          if [[ ! "$TITLE" =~ $pattern ]]; then
+            echo "::error::PR title is not a valid Conventional Commits subject: '$TITLE'"
+            echo "Expected: type(scope): imperative subject   (lower-case, no trailing period)"
+            echo "Types: feat|fix|docs|test|refactor|perf|chore|ci|revert   '!' marks a breaking change."
+            exit 1
+          fi
+          LIMIT=72
+          # Bots are exempt from the length check only, not the grammar check: Dependabot
+          # and github-actions[bot] compose their own titles and cannot shorten them, so
+          # without this exemption every bot PR becomes permanently unmergeable the
+          # moment this check is required.
+          #
+          # Patterns are QUOTED deliberately: unquoted, `[bot]` is a glob character class
+          # matching a single `b`, `o`, or `t`, so `dependabot[bot]` would match the
+          # literal string "dependabott" and never the real actor name. Quoting makes it
+          # a literal string match.
+          case "$ACTOR" in
+            'dependabot[bot]'|'dependabot-preview[bot]'|'github-actions[bot]')
+              echo "Actor '$ACTOR' is a bot — grammar enforced, length check waived."
+              echo "OK: $TITLE"
+              exit 0
+              ;;
+          esac
+          if [[ ${#TITLE} -gt $LIMIT ]]; then
+            echo "::error::PR title is ${#TITLE} chars; the limit is ${LIMIT}."
+            exit 1
+          fi
+          echo "OK: $TITLE"

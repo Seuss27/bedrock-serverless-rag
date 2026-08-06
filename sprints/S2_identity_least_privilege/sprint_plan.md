@@ -18,18 +18,46 @@
 > retained below **only as pointers**; their bodies live in
 > `sprints/MW_make_it_work/sprint_plan.md`. Do not execute them from here.
 
+> **⚠ Re-scoped a third time, 2026-08-06, by ST's pre-implementation review.** **ST no longer
+> *corrects* the upstream `bedrock-serverless-rag` policy — it DELETES the whole project entry**
+> (`ST-T2′`), because the role was inert (F44) and deleting it closed **F45** without gating an
+> irreversible transfer on a permissions-boundary design. **The consequence for this sprint is
+> not cosmetic: there is no upstream role left to adopt.** Task 2 below says *"adopt
+> `global-bootstrap`'s roles, then retire the local ones"* — after ST, **the role it adopts does
+> not exist**, and a literal executor will either point CI at an empty ARN or "unblock" itself
+> by re-adding the entry **without** a boundary, which is precisely the escalation ST removed.
+> **New Task 0 below re-creates it correctly, and it is blocking.**
+>
+> Also arriving here from ST: **F58** (the findings `Deny` must cover `kms:`, not just `s3:`),
+> the **`permissions_boundary` half of F57** (the module's roles got `path` in ST; the boundary
+> argument lands here with the policy it points at), and **F56** (the plan role's trust and its
+> workload read policy — which does not arise until the entry exists again, i.e. Task 0).
+> **`ST` Task 2b is the NORMATIVE specification for Task 0** — it is retained verbatim in
+> `sprints/ST_org_transfer/sprint_plan.md`. Read it there. Its entire purpose is to stop this
+> sprint re-adding the original, escapable construction.
+
 **Sprint Goal:** This repo ends the sprint owning its **workload and nothing else**. No OIDC
 provider, no CI role, no state bucket — and state confidentiality that does not depend on who
 can read the bucket.
 
-**Closes:** F1 (Critical), F2, F3, F40, F42, F43, F48, **F56**, and the local half of F47.
-Executes **BR-D22**. **F4** (confused deputy) is the one original task that survives unchanged.
-**F41 and F58 are not closable here** — upstream, filed in ST-T2.
+**Closes:** F1 (Critical), F2, F3, F40, F43, F48, **F56**, **F58**, the
+`permissions_boundary` half of **F57**, and the local half of F47. Executes **BR-D22**. **F4**
+(confused deputy) is the one original task that survives unchanged.
 *(F5, F39 and F51 moved to `MW`.)*
 
-**Dependencies:** **ST must be complete** — the transfer is done, CI authenticates from
-`glunk-works/…`, and `global-bootstrap`'s corrected `bedrock-serverless-rag` policy is
-applied. **`MW` must be complete** — a `tofu plan` here is meaningless until state describes
+> **Two corrections to the line above, 2026-08-06.** **F42 is no longer closed here** — ST
+> deleted the offending policy rather than replacing it, so there is nothing left in this
+> sprint that closes it; **F42 and F41 remain open org-wide** against the *other* project
+> policies (`resume_optimizer_policy` and siblings), tracked by the upstream issue ST-T2′
+> opens. And **F58 now IS closable here**, having moved from ST — the previous text said it
+> was not, which was true only while ST owned the `Deny`.
+
+**Dependencies:** **ST must be complete** — the transfer is done and CI authenticates from
+`glunk-works/…`.
+⚠️ **This previously also required "`global-bootstrap`'s corrected `bedrock-serverless-rag`
+policy is applied". That condition can never be met**: ST deletes the entry instead of
+correcting it. The corrected policy is **this sprint's Task 0 to write**, not a precondition it
+inherits — reading it as a precondition means waiting for something nobody will ever do. **`MW` must be complete** — a `tofu plan` here is meaningless until state describes
 the deployed system, and several criteria below read plan output. **S1 must be merged** — the
 plan/apply job split is what makes two roles meaningful.
 
@@ -62,6 +90,47 @@ identity mistake does not fail locally, while a workload mistake costs an apply.
 
 ## Tasks
 
+- **Task 0 (blocking, arrived from ST 2026-08-06): Re-create the upstream project entry —
+  WITH the boundary this time (F56, F58, F57's boundary half)**
+  - **⚠️ Read `ST` Task 2b before writing a line of this.** It is retained verbatim in
+    `sprints/ST_org_transfer/sprint_plan.md` and is **normative** here. It enumerates three
+    independent holes in the construction that was originally proposed — `iam:UpdateAssumeRolePolicy`
+    and `iam:UpdateRole` reachable outside the boundary condition, `iam:PassRole` scoped by
+    service but not by `Resource`, and `iam:CreatePolicy` scoped nowhere — each of which a coder
+    working from the *superseded* ST Task 2 body will faithfully reproduce. The superseded body
+    is also retained there, immediately below `T2′`, clearly marked. **Do not implement the one
+    marked SUPERSEDED.**
+  - **Why this task exists at all:** `ST-T2′` deleted the `bedrock-serverless-rag` entry from
+    `var.projects` upstream, along with `bedrock_rag_policy` and its attachment, to close **F45**
+    by removing a dormant over-privileged role rather than correcting it. That was the right
+    trade *for ST* — it took a permissions-boundary design off the critical path of an
+    irreversible transfer. The design was **deferred, not cancelled**, and this is where it lands,
+    with no irreversible act waiting on it and no pressure to weaken it to unblock a pipeline.
+  - **Description:** An upstream PR against `glunk-works/global-bootstrap` re-adding the entry:
+    1. **`variables.tf`** — `"bedrock-serverless-rag" = { repo_name = …, plan_role = true,
+       extra_oidc_subjects = ["environment:production"] }`. (`plan_role` and the subject are what
+       S1's gated apply and PR-time plan need; both keys already exist in the upstream schema.)
+    2. **`project_policies.tf`** — a workload policy scoped to what the module *actually*
+       declares, plus the permissions-boundary policy document, **per Task 2b(1)(2)(3)(5)**.
+       Derive the verb list from **`MW`'s recorded dry run** (F55), not from prose.
+    3. **`plan_roles.tf`** — `bedrock_rag_plan_policy`, the read-only mirror (**F56**), and the
+       plan-role trust decision recorded with its rationale.
+    4. **The findings `Deny` covering `s3:` AND `kms:`** on the bucket, its objects, and the
+       KMS key (**F58**, Task 2b(6)).
+  - **Then, and only then, Task 2 below becomes executable** — there is a role to adopt.
+  - **Also in this sprint, not upstream:** set `permissions_boundary =
+    var.workload_permissions_boundary_arn` on every `aws_iam_role` in `modules/` and thread the
+    variable from `environments/ai-lab`. **`path = "/bedrock-rag/"` is already set** — it landed
+    in `ST-T2a′` so that `MW` would rebuild at the correct path and the role would not be
+    replaced twice. Do not re-add it.
+  - **Acceptance Criteria:** Task 2b(4)'s **allowlist** grep passes — *no `Allow` on any `iam:`
+    action whose `Resource` is not literally `role/bedrock-rag/*` or `policy/bedrock-rag/*`*.
+    The boundary policy document is **committed upstream, not improvised**. The phrase
+    "structurally impossible" appears nowhere; an enumerated **residual risk** appears instead.
+    Every `aws_iam_role` in `modules/` declares both `path` and `permissions_boundary`. The
+    upstream PR is merged **and human-applied** before Task 2 begins. No AWS account id appears
+    in the upstream PR body — that repo is public too (BR-D4).
+
 - **Task 1: ~~Reconcile state by teardown and rebuild~~ — MOVED to `MW-T1`**
   - **Moved 2026-08-05 (BR-D23).** This task, its F39 inventory step, its teardown, and its
     `destroy → apply → verify` acceptance criterion now live in
@@ -73,7 +142,19 @@ identity mistake does not fail locally, while a workload mistake costs an apply.
     `environments/ai-lab` reports `No changes.` and a CI apply has succeeded at least once.
     If that is not true, stop — every plan-reading criterion below is invalid.
 
-- **Task 2: Adopt `global-bootstrap`'s roles, then retire the local ones (F1, F2, F3, F42)**
+- **Task 2: Adopt `global-bootstrap`'s roles, then retire the local ones (F1, F2, F3, ~~F42~~)**
+  - **⚠️ BLOCKED ON TASK 0 (added 2026-08-06).** The role this task adopts **does not exist
+    after ST** — `ST-T2′` deleted the upstream entry. Task 0 re-creates it *with* the boundary;
+    until that is merged **and applied**, there is nothing to adopt. The dangerous misreading is
+    to treat the missing role as a blocker to route around: pointing CI at the local role and
+    calling it "adopted", or re-adding the entry inline without Task 2b's construction. Both
+    reopen **F41** in the sprint whose whole purpose is closing this class of finding.
+  - **F42 is struck from this task's finding list.** It was closed here only under the old plan
+    where ST *rewrote* the policy; ST now deletes it, so F42 survives org-wide against the other
+    project policies and is not this task's to close. Do not mark it done.
+  - *(The `adopt → verify → delete` discipline below is unchanged and is exactly right — note
+    that Task 0 lengthens the window in which both roles exist, which is the window this
+    discipline exists to make safe.)*
   - **Description:** ST-T2 already added `plan_role = true` and
     `extra_oidc_subjects = ["environment:production"]` upstream and replaced
     `bedrock_rag_policy` with a boundary-constrained one. This task **switches over and

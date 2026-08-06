@@ -94,6 +94,11 @@ resource "aws_iam_role_policy" "state_access_policy" {
           "iam:GetRole",
           "iam:ListRolePolicies",
           "iam:GetRolePolicy",
+          # Required for refresh, not for any create/update the pipeline performs: the AWS
+          # provider calls ListAttachedRolePolicies whenever it reads an aws_iam_role, which
+          # CI does for bedrock_kb_role on every plan. It was granted out-of-band and existed
+          # only in live AWS until this line; committing it makes the plan clean (F50).
+          "iam:ListAttachedRolePolicies",
           "aoss:GetSecurityPolicy",
           "aoss:ListSecurityPolicies",
           "aoss:BatchGetCollection",

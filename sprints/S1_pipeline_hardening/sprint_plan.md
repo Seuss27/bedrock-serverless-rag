@@ -59,14 +59,31 @@ admin-capable apply until S2 lands.
   a required reviewer** before the first merge to `main` after this sprint, or the apply job
   will run without pausing and the sprint's main control is absent while appearing present.
   Confirmed absent as of 2026-08-05: `gh api repos/…/environments` returns `total_count: 0`.
-- **Cross-repo dependency — now settled, and already handled upstream.** Adding
-  `environment: production` to the apply job changes that job's OIDC subject to
-  `repo:…:environment:production` (Environment takes precedence over the branch ref).
-  **ST-T2 already added `extra_oidc_subjects = ["environment:production"]` and
-  `plan_role = true`** to `global-bootstrap`'s `var.projects` entry for this repo, and a human
-  applied it. Verify that before relying on it — if ST-T2 was skipped or reverted, the gated
-  apply fails to authenticate at exactly the moment the new control first engages, and the
-  fix lives in another repository.
+- **~~Cross-repo dependency — now settled, and already handled upstream.~~ — FALSE AFTER ST's
+  2026-08-06 RESHAPE. Corrected below; do not rely on the struck text.** It read: *"ST-T2
+  already added `extra_oidc_subjects = ["environment:production"]` and `plan_role = true` to
+  `global-bootstrap`'s `var.projects` entry for this repo, and a human applied it."*
+  **None of that happens.** `ST-T2′` **deletes** this project's upstream entry outright (closing
+  F45 by removing the dormant role rather than correcting it); **S2-T0 re-creates it, two
+  sprints after this one.** So when S1 runs there is no upstream entry, no
+  `extra_oidc_subjects`, and no plan role.
+  - **What still works, and why — this is the load-bearing part.** Adding
+    `environment: production` to the apply job changes its OIDC subject to
+    `repo:…:environment:production` (the Environment takes precedence over the branch ref).
+    This repo's **own** `github-actions-deploy-role` trusts
+    `StringLike "repo:${var.github_repo_path}:*"` — a **glob**, which matches that subject just
+    as it matches every other. So the gated apply **does** authenticate, on the local role.
+    ⚠️ **S1 therefore depends on F2 — a finding — remaining open.** That is not a reason to
+    close F2 early, and it is not a reason to relax about it: it means the sprint that narrows
+    the trust policy to enumerated subjects (**S2**) must add `environment:production` in the
+    *same* change, or the gated apply breaks at that moment instead of this one.
+  - **What is deferred, not broken.** `vars.AWS_PLAN_ROLE_ARN` still does not exist, so Task 4
+    keeps the `vars.AWS_PLAN_ROLE_ARN || vars.AWS_OIDC_ROLE_ARN` fallback and its
+    `# S2-T2: drop the fallback` marker — unchanged, just for one sprint longer than planned.
+    **F56 does not arise in S1** (it is a property of a plan role that does not exist yet), so
+    `tofu-plan-main`'s blocked/unblocked decision moves to **S2-T0** with the rest of it.
+    **The prohibition is unchanged and absolute: do not point any plan job at
+    `vars.AWS_OIDC_ROLE_ARN`** — that is F13 restored in the sprint that closes it.
 - **The role ARNs this sprint references are still this repo's own**
   (`github-actions-deploy-role`) until **S2-T2** switches them to the upstream roles. Keep the
   `vars.AWS_PLAN_ROLE_ARN || vars.AWS_OIDC_ROLE_ARN` fallback in Task 4 for exactly that

@@ -87,7 +87,12 @@ gates:
     - { cwd: bootstrap,           run: "tofu init -backend=false && tofu validate" }
 
 # ── branch protection ────────────────────────────────────────────────────────
-# S0-T1 installed `protected-integration-branches` on 2026-08-05 (ruleset id 20487049).
+# S0-T1 installed `protected-integration-branches` on 2026-08-05. The live ruleset id is
+# **20506099**, re-verified 2026-08-06. It is NOT the id S0-T1 originally created (20487049):
+# S0-T6's drift-detector test deliberately deleted and recreated the ruleset, which mints a new
+# id. That is exactly the trap the roadmap's 2026-08-06 log entry warns about -- never trust a
+# previously recorded id, and note the undo command below carries one. Re-read it live before
+# using it; a stale id either 404s or, worse, names a different ruleset.
 # Read live from `gh api repos/Seuss27/bedrock-serverless-rag/rules/branches/main`: exactly
 # the four rule types below, enforcement "active", `bypass_actors: []`. Verified end-to-end
 # the same day -- a direct `git push` to `main` was rejected with GH013 naming both the
@@ -96,7 +101,8 @@ gates:
 # `required_approving_review_count` stays 0 (see the `pull_request` rule's parameters, not
 # reflected in this summary): GitHub forbids approving your own PR, so any value >= 1
 # deadlocks a solo-owner repo. `bypass_actors: []` is deliberate -- a bypassable ruleset is
-# a suggestion, not a control; the undo is `gh api -X DELETE .../rulesets/20487049`.
+# a suggestion, not a control; the undo is `gh api -X DELETE .../rulesets/<id>` -- resolve
+# `<id>` live with `gh api repos/<repo>/rulesets --jq '.[].id'`, never from this comment.
 ruleset:
   name: protected-integration-branches
   rule_types: [deletion, non_fast_forward, pull_request, required_status_checks]

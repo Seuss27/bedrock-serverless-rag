@@ -34,18 +34,14 @@ Before deploying, ensure your local development environment has the following in
 2. AWS CLI v2
 3. Python 3.x
 4. An active AWS IAM Identity Center setup (SSO).
-5. An Infisical account/workspace.
 
 ---
 
 ## 🚀 Deployment Guide
 
 ### Step 1: Local Environment Preparation
-Do not store your AWS access keys or Infisical secrets in plain text. Create a `.env` file in the root directory and populate it with your specific values:
+Do not store your AWS access keys in plain text. Create a `.env` file in the root directory and populate it with your specific values:
 
-    INFISICAL_CLIENT_ID="your-machine-identity-client-id"
-    INFISICAL_CLIENT_SECRET="your-single-use-secret"
-    TF_VAR_infisical_workspace_id="your-workspace-id"
     TF_VAR_data_source_bucket_name="personal-bedrock-serverless-rag-source"
 
 *Note: The `.env` file is explicitly ignored by Git.*

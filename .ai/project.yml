@@ -87,20 +87,20 @@ gates:
     - { cwd: bootstrap,           run: "tofu init -backend=false && tofu validate" }
 
 # ── branch protection ────────────────────────────────────────────────────────
-# Read live from `gh api repos/Seuss27/bedrock-serverless-rag/rulesets` on 2026-08-05:
-# the response was `[]`. THERE IS NO BRANCH PROTECTION ON `main` TODAY. Nothing in
-# `.github/workflows/` blocks a merge; `deploy-ai-lab.yml` runs on PRs but no check is
-# required, and `main` accepts a direct push.
+# S0-T1 installed `protected-integration-branches` on 2026-08-05 (ruleset id 20487049).
+# Read live from `gh api repos/Seuss27/bedrock-serverless-rag/rules/branches/main`: exactly
+# the four rule types below, enforcement "active", `bypass_actors: []`. Verified end-to-end
+# the same day -- a direct `git push` to `main` was rejected with GH013 naming both the
+# `pull_request` rule and the missing `pr-title` status check.
 #
-# These three keys are therefore `null`/empty as a DECISION, not as a gap in this file:
-# /pr-checks must report "this repo requires no checks" rather than invent a list, which is
-# precisely the failure the schema's fail-closed rule exists to prevent. S0 installs the
-# ruleset and rewrites this block with the live values in the same pull request; every later
-# sprint that adds a gating check appends it here in ITS pull request.
+# `required_approving_review_count` stays 0 (see the `pull_request` rule's parameters, not
+# reflected in this summary): GitHub forbids approving your own PR, so any value >= 1
+# deadlocks a solo-owner repo. `bypass_actors: []` is deliberate -- a bypassable ruleset is
+# a suggestion, not a control; the undo is `gh api -X DELETE .../rulesets/20487049`.
 ruleset:
-  name: null
-  rule_types: []
-  required_checks: []
+  name: protected-integration-branches
+  rule_types: [deletion, non_fast_forward, pull_request, required_status_checks]
+  required_checks: [pr-title]
 
 # ── the fresh-session review gate ────────────────────────────────────────────
 # `null` is a decision, not a gap: this repo has no `architect-review` CI check. Its critic

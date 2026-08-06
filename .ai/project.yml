@@ -1,0 +1,121 @@
+# .ai/project.yml — bedrock-serverless-rag's parameterization of the `way-of-working` plugin.
+#
+# The plugin's skills and agents are portable and may never name a repo-specific value;
+# where behavior needs one they read it from here. The contract, key by key, is
+# `reference/project-schema.md` inside the plugin — read that before adding a key, and note
+# its central rule: when a shared skill assumes something untrue about this repo, the fix is
+# a new schema key, or the skill was never portable. Overriding a skill locally is not an
+# option — a repo-local `.claude/skills/<name>/` shadows the plugin's copy entirely and
+# silently stops receiving upstream fixes.
+#
+# EVERY VALUE BELOW DESCRIBES THIS REPO AS IT IS ON 2026-08-05, not as the hardening
+# roadmap intends it to become — `repo:` above is the sharpest example: the transfer to
+# `glunk-works` is decided but has not happened. Two keys are `null` for exactly that reason (`ruleset.name`,
+# `review.ci_gate`) — see the notes on each. A sprint that changes one of these facts
+# updates this file in the SAME pull request; a stale value here makes every skill that
+# reads it report a confident answer about a repo that no longer exists.
+
+# ── identity ─────────────────────────────────────────────────────────────────
+# Personal namespace, NOT `glunk-works/` — and that is load-bearing, not cosmetic.
+# `glunk-works/global-bootstrap` already generates a CI role for this project, but builds its
+# OIDC trust subject from `github_organization=glunk-works`, so `repo:glunk-works/...` never
+# matches a token minted here and that role is inert (F44). The owner name sits inside every
+# OIDC subject, which is why BR-D13 — "does this repo move to glunk-works?" — was promoted out
+# of S6 into a decision that had to precede S2. It is now RESOLVED (2026-08-05): the repo
+# transfers, executed by the ST sprint.
+# Until ST lands, this value is the truth. Change it only in the change that actually
+# transfers the repo — ST-T5 owns that edit, and this comment goes with it.
+repo: Seuss27/bedrock-serverless-rag
+pr_base: main
+
+# ── the deep record ──────────────────────────────────────────────────────────
+roadmap: docs/hardening_roadmap.md
+sprints_dir: sprints
+
+# The roadmap is also the threat model: the trust boundaries (untrusted ingested documents,
+# the OIDC/STS boundary, the public data plane) and the public-repo data-handling rules all
+# live in it. There is no separate threat_model.md, and inventing a path to one would point
+# security-critic at a file that does not exist.
+threat_model: docs/hardening_roadmap.md
+
+decisions:
+  # BR-D1..BR-D24 are recorded there. KEEP THIS RANGE CURRENT: a skill told the log stops at
+  # D19 has no reason to look for BR-D20 (ephemerality is a design requirement AND the
+  # acceptance test), BR-D22 (native state encryption), BR-D23 (the proportionality reshape)
+  # or BR-D24 (the severity rule) -- the four late decisions that changed the most.
+  log: docs/hardening_roadmap.md
+  prefix: BR-D
+
+backlog:
+  kind: github_issues              # this repo has no backlog file; findings are issues.
+  path: null
+  item_prefix: null
+
+# docs-consistency's audit set. README.md is deliberately ABSENT: it documents a flat
+# root-level layout (`bedrock.tf`, `iam.tf`, … at the repo root) that the module
+# refactor retired (PR #13 — there is no sprint "S31"; the earlier note here invented one),
+# and a Titan v1 embedding model the code no longer uses. Auditing it
+# today would re-report those known-stale claims (#8) on every pass. S6 rewrites it; the
+# same PR adds it to this list.
+load_bearing_docs:
+  - CLAUDE.md
+  - docs/hardening_roadmap.md
+  - .ai/next-steps.md
+  - sprints/**/sprint_plan.md
+
+# ── what counts as a behavior change ─────────────────────────────────────────
+# `bootstrap/` is in here on purpose even though it is applied by hand: it defines the OIDC
+# trust policy and the deployment role's permissions, so a diff touching it changes what CI
+# is allowed to do in AWS. That is the highest-consequence behavior change this repo has.
+code_paths:
+  - modules/
+  - environments/
+  - bootstrap/
+  - .github/workflows/
+
+# ── the local green gate ─────────────────────────────────────────────────────
+# A local pre-check, not the gate of record — CI on the PR is. Mirrors CLAUDE.md § Commands.
+# `tofu validate` runs with -backend=false on purpose so it needs no AWS credentials.
+#
+# There is NO Python entry yet, and that absence is accurate rather than an oversight: this
+# repo has no pyproject.toml, no ruff config, and no test suite as of today. S5 adds the
+# toolchain and appends `ruff check` / `bandit -ll` / `pytest` here in the same PR.
+gates:
+  green:
+    - { run: tofu fmt -check -recursive }
+    - { cwd: environments/ai-lab, run: "tofu init -backend=false && tofu validate" }
+    - { cwd: bootstrap,           run: "tofu init -backend=false && tofu validate" }
+
+# ── branch protection ────────────────────────────────────────────────────────
+# Read live from `gh api repos/Seuss27/bedrock-serverless-rag/rulesets` on 2026-08-05:
+# the response was `[]`. THERE IS NO BRANCH PROTECTION ON `main` TODAY. Nothing in
+# `.github/workflows/` blocks a merge; `deploy-ai-lab.yml` runs on PRs but no check is
+# required, and `main` accepts a direct push.
+#
+# These three keys are therefore `null`/empty as a DECISION, not as a gap in this file:
+# /pr-checks must report "this repo requires no checks" rather than invent a list, which is
+# precisely the failure the schema's fail-closed rule exists to prevent. S0 installs the
+# ruleset and rewrites this block with the live values in the same pull request; every later
+# sprint that adds a gating check appends it here in ITS pull request.
+ruleset:
+  name: null
+  rule_types: []
+  required_checks: []
+
+# ── the fresh-session review gate ────────────────────────────────────────────
+# `null` is a decision, not a gap: this repo has no `architect-review` CI check. Its critic
+# pass is /critic-gate, run locally before the PR — which makes that pass the only critic
+# look a diff gets before the human's merge click. S1 does NOT add one; the roadmap records
+# (BR-D14) that a review gate is worth nothing until the deterministic gates it sits beside
+# actually block a merge.
+review:
+  ci_gate: null
+
+# ── agents ───────────────────────────────────────────────────────────────────
+# `models` governs *session* routing (which model a person should be running), not what a
+# spawned subagent runs as — an agent's model comes from its own frontmatter upstream.
+agents:
+  enabled: [architect, coder, security-critic, docs-consistency]
+models:
+  architect: opus
+  coder: sonnet

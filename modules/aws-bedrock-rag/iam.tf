@@ -21,6 +21,16 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "bedrock_source_en
 resource "aws_iam_role" "bedrock_kb_role" {
   name = "personal-bedrock-kb-execution-role"
 
+  # Every role this module creates lives under this path (ST-T2a). The path is what a
+  # future upstream policy scopes to -- `role/bedrock-rag/*` -- so that the deploy identity
+  # can create this role and nothing else. `permissions_boundary` is the other half of that
+  # construction and lands in S2, together with the boundary policy it must point at; adding
+  # it here first would reference an ARN that does not exist yet.
+  #
+  # Changing `path` forces replacement. That is free today (BR-D20: the corpus is empty) and
+  # is why this lands BEFORE MW rebuilds -- after MW it would cost a second replacement.
+  path = "/bedrock-rag/"
+
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
     Statement = [

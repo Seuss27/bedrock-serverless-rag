@@ -70,9 +70,24 @@ one.**
 > **The failure a literal executor hits:** inventory and delete the collection, the Knowledge
 > Base, the bucket and the KB role; run the pipeline; get `AccessDeniedException` on
 > `CreateAccessPolicy`. The working — if orphaned — system is now gone, and the rebuild is
-> blocked on a permission **this repo cannot grant itself** once ST-T2 moved the policy
-> upstream. F51 goes from *"never demonstrated"* to *"actively broken"*, and recovery needs an
-> out-of-band human apply against the very `bootstrap/` root being retired.
+> blocked on a missing permission. F51 goes from *"never demonstrated"* to *"actively broken"*,
+> and recovery needs an out-of-band human apply against the `bootstrap/` root being retired.
+>
+> **🔄 Corrected 2026-08-06 — the trap named here is smaller than written, and the reason is
+> load-bearing.** This paragraph used to say the rebuild would be blocked on a permission
+> **"this repo cannot grant itself, once ST-T2 moved the policy upstream."** ST no longer moves
+> the policy upstream: **`ST-T2′` deletes the upstream entry outright** (closing F45 by removal),
+> so after ST the deploy identity is still **this repo's own `github-actions-deploy-role`**, and
+> its policy is still `aws_iam_role_policy.state_access_policy` in **`bootstrap/state-backend.tf`
+> — a file in this repository, editable by a normal PR plus a human apply.** The recovery path
+> is therefore *open*, not closed. That makes **option 2 below the default rather than the
+> fallback**, and it removes the coupling to S2's switchover that option 1 carries.
+>
+> **What does NOT change: the gate.** Sufficiency is still a precondition, and the four gaps
+> are still real — re-verified against `state_access_policy` on 2026-08-06: no
+> `aoss:*AccessPolicy` verbs, no `iam:PassRole`, no `s3:GetBucket*`, no
+> `s3:PutEncryptionConfiguration`. Deleting a working system before proving the rebuild works
+> is the expensive mistake whether or not the fix is reachable afterwards.
 >
 > **Gate: Task 0 must pass before Task 1 deletes anything.** Sufficiency is a *precondition*,
 > never a discovery.
@@ -83,13 +98,19 @@ one.**
 
 - **Task 0 (blocking, F55): Prove the deploy identity can rebuild from scratch**
   - **Description:** Demonstrate — before any deletion — that the identity the rebuild will run
-    under can create everything the module declares. Two ways to satisfy it; pick one and
-    record which in the PR body:
-    1. **Adopt first.** Bring forward S2-T2's *adopt* step so the rebuild runs under the
-       corrected upstream role rather than the legacy one. Cleanest, and it removes the "this
-       repo cannot grant itself the fix" trap entirely — but it couples this sprint to S2's
-       switchover.
-    2. **Widen first.** Extend `state_access_policy` with the missing verbs — `aoss:*AccessPolicy`,
+    under can create everything the module declares. Two ways were offered; **after ST's
+    2026-08-06 reshape only option 2 is viable** — option 1 is struck below with its reasoning
+    retained, because "adopt the upstream role first" is the natural instinct and it now leads
+    somewhere bad. Record in the PR body that option 2 was taken **and why option 1 was not**:
+    1. **~~Adopt first.~~ — NOT AVAILABLE after ST (struck 2026-08-06).** This read: *bring
+       forward S2-T2's adopt step so the rebuild runs under the corrected upstream role.*
+       **There is no corrected upstream role.** `ST-T2′` deleted the `bedrock-serverless-rag`
+       entry from `var.projects`, and **S2-T0 re-creates it — two sprints after this one.**
+       Attempting this option means either waiting on a sprint that runs later, or re-adding the
+       upstream entry here *without* the boundary construction, which reopens **F41** to unblock
+       a rebuild. Do neither.
+    2. **Widen first — now the DEFAULT, not the fallback.** Extend `state_access_policy` with the
+       missing verbs — `aoss:*AccessPolicy`,
        `iam:PassRole` (conditioned on `iam:PassedToService = bedrock.amazonaws.com`),
        `bedrock:Get*`/`TagResource`, `s3:*EncryptionConfiguration`/`GetBucket*` — as a temporary
        measure on a role S2 then deletes.

@@ -5,8 +5,43 @@
 **Sprint Goal:** Move the repository into the `glunk-works` organization **without opening an
 escalation path into the shared AWS account and without leaving CI unable to authenticate**.
 
-**Closes:** F44, **F45** (Critical), F50, **F57**, **F58**, and the stopgap half of F40.
-Executes **BR-D13**.
+**Closes:** F44, **F45** (Critical — **by removal, not by correction**; see the reshape banner
+below), F50, the `path` half of **F57**, and the stopgap half of F40. Executes **BR-D13**.
+
+**Moved out of this sprint:** **F58** and the `permissions_boundary` half of **F57** move to
+**S2** with Task 2b; **F55**/**F56** move to **MW** and **S2** respectively. None is dropped —
+each is re-homed with its premise recorded.
+
+> ### 🔄 Reshaped 2026-08-06 by the pre-implementation plan review — read this before the tasks
+>
+> The task bodies below were **not all rewritten**; where this banner and a task body
+> disagree, **the banner wins** (same convention as the BR-D23 banners elsewhere).
+>
+> **F45 is now closed by deleting the dormant upstream role, not by correcting its policy.**
+> The old Task 2 specified a full permissions-boundary construction in
+> `glunk-works/global-bootstrap` — merged *and* human-applied — as a blocking prerequisite for
+> an irreversible transfer. Task 2b's own text warns that a boundary built under unblock
+> pressure gets *weakened rather than corrected*; making it the gate on a transfer deadline
+> built in exactly that pressure. Since the role is **inert today** (F44 — its trust subject
+> matches nothing while this repo is `Seuss27/…`), deleting it closes F45 outright at a
+> fraction of the risk, and defers the boundary design to **S2**, where BR-D17 hands identity
+> ownership upstream anyway and no irreversible act is waiting on it.
+>
+> - **Task 2 → `T2′`**: a ~20-line *deletion* PR upstream. Still merged **and human-applied
+>   before Task 3** — the ordering constraint survives, it just got cheap.
+> - **Task 2a → `T2a′`**: **split.** The `path` half lands here (it must precede **MW**, which
+>   is the very next sprint, or the role is replaced twice). The `permissions_boundary` half
+>   moves to S2 — it would otherwise point at a boundary ARN that does not exist yet.
+> - **Task 2b → S2**, retained verbatim as the **normative** spec for re-adding the entry. S2
+>   must not re-add the escapable original.
+> - **Task 2c → MW**, and **re-pointed**: with no upstream role, MW runs under *this* repo's
+>   `github-actions-deploy-role`, so F55's sufficiency question now targets
+>   `bootstrap/state-backend.tf`'s `state_access_policy`, not upstream.
+>
+> **Correction to the apply count below: Task 0 needs NO apply.** Its drift was *code behind
+> live*, so committing the action makes the plan clean without applying anything — verified
+> `No changes.` on 2026-08-06. **Three** human applies remain, not four: the upstream deletion
+> (T2′), and Task 3's widen and narrow.
 
 **Dependencies:** **S0 must be merged** — the governance baseline is cheap to re-verify after
 a transfer and expensive to redo, so it lands first. **Task 0 gates every apply in this
@@ -20,10 +55,10 @@ subject, so doing S1's Environment/variable work first means doing it twice.
 > acceptance criteria as already satisfied, and start this sprint at Task 0.
 
 **Human applies required (BR-D1) — three of them, and they are the sprint's risk surface:**
-Task 0's drift reconciliation and Task 3's *widen* and *narrow*, all in `bootstrap/`; plus a
-human apply of **`global-bootstrap`** for Task 2. **Task 1 needs no apply** (a `lifecycle`
-meta-argument produces no diff) and in any case is already merged. *(The previous version of
-this header named Tasks 1 and 4 — it was wrong on both.)*
+Task 3's *widen* and *narrow* in `bootstrap/`, plus a human apply of **`global-bootstrap`** for
+**T2′**. **Task 1 needs no apply** (a `lifecycle` meta-argument produces no diff) and in any
+case is already merged. **Task 0 needs no apply either** — see the banner; this line previously
+said it did. *(An earlier version named Tasks 1 and 4 — it was wrong on both.)*
 
 **Security Considerations:** This sprint's central risk is not the transfer failing — it is
 the transfer **succeeding**, quietly, with a side effect nobody reviewed.
@@ -40,8 +75,15 @@ the transfer **succeeding**, quietly, with a side effect nobody reviewed.
 > findings archive** (**F47**).
 >
 > So a repository-settings change, with **no IaC diff anywhere**, creates a new path to
-> account administrator. **Task 2 must land upstream before Task 3 runs.** Not after, not in
+> account administrator. **`T2′` must land upstream before Task 3 runs.** Not after, not in
 > parallel.
+>
+> **Confirmed live 2026-08-06** by reading `glunk-works/global-bootstrap` directly: the entry
+> is a bare one-liner (`"bedrock-serverless-rag" = { repo_name = "bedrock-serverless-rag" }`)
+> and `aws_iam_policy.bedrock_rag_policy` carries exactly the F41/F42 grant described above.
+> The description in this plan is accurate, not stale. **`resume_optimizer_policy` carries the
+> identical F41 escalation** — deleting our entry closes F45 for this project only, which is
+> why `T2′` also opens the org-wide F41 issue.
 
 **Risks & Blockers:**
 - Requires **org owner** permission on `glunk-works` and admin on the source repo. A transfer
@@ -58,14 +100,24 @@ the transfer **succeeding**, quietly, with a side effect nobody reviewed.
 
 ## Tasks
 
-> **Execution order is NOT the numbering** *(revised 2026-08-05 by the plan review)*:
-> **T0 → ~~T1~~ (already done, PR #17) → T2a → T2b → T2 → T3 → T4 → T5**, with **T2c** as the
-> gate `MW` must pass before *it* starts. T2a and T2b both feed T2 and must precede it: T2a is
-> a change to **this** repo that has to land before T2's upstream condition goes live, and T2b
-> is the corrected specification T2 implements. Executing T2 from its own body alone
-> reproduces the escapable construction.
+> **Execution order is NOT the numbering** *(revised 2026-08-06 by the pre-implementation
+> review — supersedes the 2026-08-05 order)*:
+> **T0 → ~~T1~~ (done, PR #17) → `T2′` → `T2a′` → T3 → T4 → T5.**
+>
+> The old order was `T0 → T2a → T2b → T2 → T3 …`, where T2a and T2b both *fed* T2: T2a had to
+> land before T2's upstream `iam:PermissionsBoundary` condition went live, and T2b was the
+> corrected spec T2 implemented. **Deleting the upstream entry removes that whole dependency
+> chain.** `T2a′` no longer feeds anything in this sprint — it is now ordered only against
+> **MW**, which follows ST immediately, and it can land in any PR here. The single hard
+> ordering that remains is **`T2′` applied upstream before Task 3's transfer.**
 
 - **Task 0 (blocking): Reconcile `bootstrap/`'s drift before ANY apply here (F50)**
+  - **✅ Criterion 1 MET 2026-08-06** — `iam:ListAttachedRolePolicies` is committed to
+    `bootstrap/state-backend.tf` and a live `tofu plan` now reports **`No changes.`**
+    **No apply was required:** live already had the action and the code did not, so committing
+    it closed the gap in the direction that needs no write. **Criterion 2 (the off-workstation
+    state backup) is still OUTSTANDING and still blocks Task 3's applies** — it is not
+    discharged by criterion 1, and Task 3 is where the applies now live.
   - **Description:** `tofu apply` in `bootstrap/` is **not** currently a no-op. A live plan on
     2026-08-05 reports **`1 to change`**: it removes `iam:ListAttachedRolePolicies` from
     `state_access_policy`. That action exists in the **live** AWS policy and not in the
@@ -130,7 +182,46 @@ the transfer **succeeding**, quietly, with a side effect nobody reviewed.
     tofu rejects it as an incomplete resource address. `bootstrap/providers.tf` sets no
     `profile`, so `$env:AWS_PROFILE = "admin-sso"` must be set in the shell first (F49).
 
-- **Task 2: Fix the upstream project entry BEFORE the transfer (F45, F42)**
+- **`T2′` (replaces Task 2): DELETE the dormant upstream entry before the transfer (F45)**
+  - **Description:** A pull request against **`glunk-works/global-bootstrap`** that *removes*
+    this project's generated CI role rather than correcting its policy. Three deletions:
+    1. **`variables.tf`** — drop the `"bedrock-serverless-rag" = { repo_name = … }` entry from
+       `var.projects`. This is the line that causes the role to be generated at all.
+    2. **`project_policies.tf`** — drop `aws_iam_policy.bedrock_rag_policy` (the F42 grant:
+       `lambda:*`, `apigateway:*` — not this workload) and
+       `aws_iam_role_policy_attachment.bedrock_rag_attach`.
+    3. **Open the F41 issue upstream in the same visit.** `resume_optimizer_policy` — and, per
+       the roadmap, the other project policies — carry the identical
+       `iam:CreateRole`/`PutRolePolicy`/`AttachRolePolicy`/`PassRole` on `Resource = "*"`
+       escalation. This deletion closes F45 **for this project only**; F41 and F42 remain open
+       org-wide and must not be recorded as closed by this sprint.
+  - **Why deletion and not correction:** the role is **inert today** (F44 — its trust subject
+    is `repo:glunk-works/…`, which matches nothing while this repo is `Seuss27/…`), so removing
+    it is a no-op operationally and closes F45 outright. **CI continuity does not depend on
+    it:** this repo authenticates through its own `github-actions-deploy-role` in `bootstrap/`,
+    which ST leaves untouched and Task 3's widen carries across the transfer. The boundary
+    construction moves to **S2**, where BR-D17 hands identity ownership upstream anyway and no
+    irreversible act is waiting on it.
+  - **What this defers, explicitly:** `plan_role = true` and `extra_oidc_subjects` are **not**
+    set, so no plan role exists and **F56 does not arise in this sprint**. S1 needs a plan role;
+    it is S2's job to re-add the entry *with* the Task 2b boundary, and S1 must not quietly
+    re-add it without one.
+  - **Target Files:** `glunk-works/global-bootstrap`: `variables.tf`, `project_policies.tf`
+    (an upstream PR — not files in this repo)
+  - **Acceptance Criteria:** The upstream PR is **merged and applied by a human before Task 3
+    begins** — record the applied timestamp in this sprint's PR body. After the apply,
+    `aws iam get-role --role-name github-actions-bedrock-serverless-rag` returns
+    **`NoSuchEntity`** — verified against live AWS, not inferred from the merged HCL. The F41
+    issue exists upstream and is linked from `docs/hardening_roadmap.md` § 9.4. **Do not paste
+    the AWS account id into the upstream PR** — `global-bootstrap` is public too (BR-D4).
+
+- **~~Task 2: Fix the upstream project entry BEFORE the transfer (F45, F42)~~ — SUPERSEDED by
+  `T2′`; body retained as the record of what moved to S2**
+  - **⚠️ DO NOT IMPLEMENT THIS.** Everything below describes correcting a policy that `T2′`
+    **deletes**. Steps 1–4 (the `plan_role`/`extra_oidc_subjects` entry, the replacement
+    workload policy, `bedrock_rag_plan_policy`, and the plan-role trust decision) are the
+    specification for **re-adding** the entry in **S2**, and they are normative *there*,
+    together with Task 2b. Implementing them here would re-create the very role F45 is about.
   - **Description:** A pull request against **`glunk-works/global-bootstrap`**. Two changes,
     and the second is the one that must not be skipped:
     1. **`variables.tf`** — update the `bedrock-serverless-rag` entry in `var.projects`:
@@ -194,11 +285,28 @@ the transfer **succeeding**, quietly, with a side effect nobody reviewed.
     is linked from `docs/hardening_roadmap.md` § 9.4. **Do not start Task 3 until this is
     applied** — record the applied timestamp in the sprint's PR body.
 
-- **Task 2a (blocking Task 2): Give the module's roles a path and a boundary (F57)**
-  - **⚠️ Ordering — this is the whole point of the task.** It must land **before** Task 2's
-    upstream `iam:PermissionsBoundary` condition goes live, and the two changes are **in
-    different repositories**, so nothing enforces the order automatically. State it in both PR
-    bodies.
+- **`T2a′` (replaces Task 2a): Give the module's roles a PATH — the boundary half moves to S2
+  (F57, split)**
+  - **✅ DONE 2026-08-06** — `path = "/bedrock-rag/"` is set on `aws_iam_role.bedrock_kb_role`,
+    the module's only role, with a comment recording why the boundary half is absent.
+  - **⚠️ The ordering that mattered is gone; a different one replaced it.** This task used to
+    be blocking on Task 2, because it had to land before the upstream
+    `iam:PermissionsBoundary` condition went live in **another repository** — an ordering
+    nothing enforced automatically. `T2′` deletes that condition along with the policy, so
+    **this task now feeds nothing in this sprint.** What it is still ordered against is
+    **MW**, which follows ST immediately: `path` **forces role replacement**, so landing it
+    before MW's rebuild costs one replacement instead of two. Free either way under BR-D20 —
+    but a knowingly wasted cycle is still worth not spending.
+  - **Why `permissions_boundary` is NOT set here.** It would have to reference
+    `var.workload_permissions_boundary_arn`, and **no boundary policy exists to point at**
+    until S2 writes the one specified in Task 2b. Setting it now yields either an empty string
+    (silently no boundary — worse than none, because it reads as protected) or a broken apply.
+    S2 adds the argument and the policy together, as one change.
+  - **Acceptance Criteria — this sprint:** every `aws_iam_role` in `modules/` declares `path`
+    — grep-checkable. **`permissions_boundary` is deliberately absent and its absence is not a
+    defect here.** The variable threading and the boundary argument are **S2's** criteria, not
+    this sprint's; a reviewer checking the original wording will otherwise flag a gap that was
+    moved on purpose.
   - **Description:** `aws_iam_role.bedrock_kb_role` declares `name =
     "personal-bedrock-kb-execution-role"` and **no `path`, no `permissions_boundary`**. No task
     in ST, S2 or S3+S4 previously added either. The moment Task 2's condition and
@@ -223,7 +331,16 @@ the transfer **succeeding**, quietly, with a side effect nobody reviewed.
     grep-checkable. The variable is threaded from `environments/ai-lab`. Both this PR body and
     the upstream PR body state the ordering dependency explicitly.
 
-- **Task 2b (normative for Task 2): the boundary construction, corrected**
+- **Task 2b → MOVED TO S2. Normative there, not here. Retained verbatim below.**
+  - **⚠️ Nothing in this task is executed by ST.** `T2′` deletes the policy this specification
+    corrects, so there is nothing here to apply it to. It is reproduced in full because it is
+    the **specification S2 must follow when it re-adds the entry** — and the failure it exists
+    to prevent is precisely that S2 re-adds the *original*, escapable construction after the
+    corrected one has scrolled out of anyone's memory. **S2 must not write a boundary without
+    reading this.** F58 (the `kms:` extension in step 6) and the `permissions_boundary` half
+    of F57 travel with it.
+  - **One thing S2 must re-derive rather than inherit:** the account-id-bearing ARNs below are
+    written as `<acct>` placeholders. Keep them that way in any public PR (BR-D4).
   - **Description:** The construction Task 2 originally described was asserted to make
     privilege escalation *"structurally impossible."* **It does not, and that phrase must not
     appear in the upstream PR.** Three independent holes, each of which a coder implementing
@@ -286,7 +403,22 @@ the transfer **succeeding**, quietly, with a side effect nobody reviewed.
     policy document is committed upstream, not improvised. The phrase "structurally impossible"
     appears nowhere; an enumerated **residual risk** appears instead.
 
-- **Task 2c (blocking `MW`, not this sprint): prove the deploy identity can rebuild (F55)**
+- **Task 2c → MOVED TO MW, and RE-POINTED. Still blocking MW; no longer about upstream.**
+  - **⚠️ The target changed, and this is the part that will be missed.** The body below assumes
+    the deploy identity is the **upstream** role whose policy Task 2 rewrites. `T2′` deletes
+    that role, so **MW runs under this repo's own `github-actions-deploy-role`** and F55's
+    sufficiency question now targets `aws_iam_role_policy.state_access_policy` in
+    **`bootstrap/state-backend.tf`**. Reading that policy against F55's list on 2026-08-06, all
+    four gaps are real and present: **no `aoss:*AccessPolicy` verbs** (only the `SecurityPolicy`
+    ones), **no `iam:PassRole`**, **no `s3:GetBucket*`**, **no `s3:PutEncryptionConfiguration`**
+    (`s3:PutBucket*` does not cover it — the encryption API is not a `PutBucket*` action).
+    So MW's rebuild would fail on every one of them.
+  - **Do not fix that here.** ST's Task 0 deliberately exists so an unrelated change does not
+    ride along on a `bootstrap/` apply, and widening the deploy policy is exactly such a change.
+    It belongs to MW, gated on MW's own dry run — and per the body below, **the verb list must
+    be regenerated from that dry run**, not copied from F55, whose own confidence note says it
+    may be incomplete. The four gaps above are corroboration that the dry run is necessary, not
+    a substitute for it.
   - **Description:** Recorded here because Task 2 is where the replacement policy is written,
     and this is the criterion that policy must meet. `MW` deletes the orphaned workload and
     rebuilds it. The rebuild needs verbs the **current** `state_access_policy` does not grant —
@@ -349,20 +481,32 @@ the transfer **succeeding**, quietly, with a side effect nobody reviewed.
     authenticated to AWS under `glunk-works/…` — **observed in a workflow run, not inferred
     from the policy text**. **No `repo:Seuss27/` string remains in any trust policy, verified
     with `aws iam get-role` against live AWS rather than against the HCL** — and this is
-    blocking, per the narrow note above. The `github-actions-bedrock-serverless-rag` role, now
-    reachable, resolves to the **corrected** policy from Task 2 — verify by reading the attached
-    policy ARN, not by assuming Task 2 took effect. Task 0's state backup has been re-taken
-    immediately before this task's applies.
+    blocking, per the narrow note above. **`github-actions-bedrock-serverless-rag` does not
+    exist** — confirm with `aws iam get-role --role-name github-actions-bedrock-serverless-rag`
+    returning `NoSuchEntity`, against live AWS. *(This criterion previously read "resolves to
+    the corrected policy from Task 2"; under `T2′` the role is deleted, so the check inverts
+    from "right policy attached" to "role absent". A reviewer working from the old wording will
+    look for the wrong thing.)* **Task 0's criterion-2 state backup has been taken, verified
+    restorable, and re-taken immediately before the narrow** — these two applies are now the
+    only applies in the sprint, so this is the one place that backup protects.
 
 - **Task 4: Re-establish everything the transfer did not carry**
   - **Description:** A transfer moves the repository record, its issues, pull requests,
     releases and stars. It does **not** reliably carry the settings this roadmap depends on.
     Treat every item below as **absent until observed present**, and re-create what is
     missing:
-    - **Repository variables** (`AWS_OIDC_ROLE_ARN`, `AWS_PLAN_ROLE_ARN`,
-      `DATA_SOURCE_BUCKET_NAME`) and **secrets** — assume gone; re-set them, pointing at the
-      role ARNs `global-bootstrap` now outputs (`github_actions_role_arns` and
-      `github_actions_plan_role_arns`).
+    - **Repository variables** and **secrets** — assume gone; re-set them. **Live on
+      2026-08-06 there are exactly two**, `AWS_OIDC_ROLE_ARN` and `DATA_SOURCE_BUCKET_NAME`;
+      **`AWS_PLAN_ROLE_ARN` does not exist yet** — S1 creates it, so it is not something this
+      task restores. Both surviving values are BR-D4 *restricted* (an account id and a bucket
+      name): re-set them through `gh variable set`, never by pasting them into a PR body,
+      an issue, or a workflow log.
+      ⚠️ **They point at this repo's own `github-actions-deploy-role` from `bootstrap/`, NOT
+      at a `global-bootstrap` output.** The original wording said to repoint them at
+      `github_actions_role_arns` / `github_actions_plan_role_arns` upstream — under `T2′`
+      those outputs contain **no entry for this project**, so following it yields an empty
+      ARN and CI that cannot authenticate. Retiring the local role in favour of an upstream
+      one is **S2's** job (BR-D17), not this task's.
     - **The ruleset** from S0-T1 — re-verify with
       `gh api repos/glunk-works/bedrock-serverless-rag/rules/branches/main`; re-create from
       the S0 payload if absent, and update `.ai/project.yml` either way.
@@ -371,19 +515,55 @@ the transfer **succeeding**, quietly, with a side effect nobody reviewed.
     - **Labels** from S0-T3 — org repos may inherit a different default set.
     - **Environments** — none exist yet (`total_count: 0` as of 2026-08-05), so nothing to
       restore; S1-T5 creates `production` **after** this sprint, under the new owner.
-    - **Org-level rulesets and policies** may now *additionally* apply. Check
-      `gh api orgs/glunk-works/rulesets` and reconcile: an org rule requiring a check this
-      repo does not produce would deadlock every PR, exactly as in BR-D9.
+    - **Org-level rulesets — ✅ RESOLVED 2026-08-06, and the reason matters.**
+      `gh api orgs/glunk-works/rulesets` returns **403 "Upgrade to GitHub Team to enable this
+      feature"**, and `gh api orgs/glunk-works --jq .plan.name` returns **`free`**. Org
+      rulesets are a paid feature, so on the current plan **none can exist** and the BR-D9
+      deadlock-from-outside is structurally impossible.
+      ⚠️ **This is plan-dependent, not permanent** — if `glunk-works` ever upgrades to Team,
+      org rulesets become possible and this check must be re-run. Note also the first attempt
+      returned a **404 for a missing `admin:org` scope**, which is indistinguishable from
+      "no rulesets exist" if read carelessly: the 403-with-upgrade-message is what makes this
+      a *finding* rather than a *failed lookup*. Record it as verified-by-impossibility, never
+      as "checked, none found".
+    - **Other org-level policies** (base permissions, Actions policy) still apply and are not
+      covered by the ruleset API. Verified 2026-08-06: `default_repository_permission` is
+      **`read`**, so org members do **not** get write on transfer — the Critical Review's
+      "the transfer widens who can reach the shared account" concern is materially smaller
+      than written, though still a real change from single-owner. 2FA is enforced org-wide.
     Then update every place the old path is written down: `.ai/project.yml`'s `repo:` key,
     `docs/hardening_roadmap.md` (the `gh api` examples), `README.md`, the issue-template
     `config.yml` discussions URL, and any badge.
   - **Target Files:** `.ai/project.yml`, `docs/hardening_roadmap.md`, `README.md`,
     `.github/ISSUE_TEMPLATE/config.yml`, `CLAUDE.md`
-  - **Acceptance Criteria:** `grep -rn 'Seuss27' . --exclude-dir=.git` returns **nothing**
-    (the CODEOWNERS entry becomes the org handle or the user's org membership). Every S0
-    acceptance criterion re-verified green under the new owner — re-run them, do not assume
-    they survived. `gh api orgs/glunk-works/rulesets` has been read and any interaction with
-    the repo ruleset is recorded in the PR body.
+  - **Acceptance Criteria — rewritten 2026-08-06; the original was unachievable.**
+    > ⚠️ The old criterion was *"`grep -rn 'Seuss27' . --exclude-dir=.git` returns **nothing**"*.
+    > It **cannot pass without destroying the historical record.** As of 2026-08-06 the string
+    > appears in this very sprint plan (it documents the transfer *from* `Seuss27`), in S0's
+    > plan (the `gh api` commands actually executed), in S1's, S3's and S6's plans, and in the
+    > roadmap's **F17 evidence row**. Scrubbing those rewrites history to satisfy a grep — and
+    > it is the same defect Task 2b(4) diagnoses upstream: a criterion nobody can pass gets
+    > **waived wholesale**, taking the two references that genuinely rot silently
+    > (`CODEOWNERS`, the discussions URL) down with it.
+
+    **Operative references** — every one of these must be updated, and this list is
+    exhaustive and grep-checkable:
+    - `.ai/project.yml` → the `repo:` key **and** its explanatory comment (Task 5 owns this)
+    - `.github/CODEOWNERS` → currently `* @Seuss27` plus `/bootstrap/` and `/.github/workflows/`
+      lines; becomes the org handle or the user's org membership
+    - `.github/ISSUE_TEMPLATE/config.yml` → the discussions URL
+    - `README.md`, `CLAUDE.md` → any repo path or badge
+    - **live AWS trust policies** → no `repo:Seuss27/` string, verified with `aws iam get-role`
+      against live AWS, **not** against the HCL
+
+    **Historical references — MUST be left alone:** `sprints/**/sprint_plan.md` and
+    `docs/hardening_roadmap.md`'s finding inventory and status log. They record what was true
+    and what was executed. `docs-consistency` must not flag these; that agent's own rule is
+    that intentional historical prose is not a contradiction.
+
+    Every S0 acceptance criterion re-verified green under the new owner — re-run them, do not
+    assume they survived. The org-ruleset result above is recorded in the PR body **with its
+    reasoning** (verified-by-impossibility on the Free plan), not as a bare "checked".
 
 - **Task 5: Record the outcome**
   - **Description:** Update `docs/hardening_roadmap.md`: mark **BR-D13 executed** with the
@@ -392,19 +572,43 @@ the transfer **succeeding**, quietly, with a side effect nobody reviewed.
     `Seuss27/…` becomes wrong the moment this sprint lands, and a stale explanation of a
     decision is worse than none.
   - **Target Files:** `docs/hardening_roadmap.md`, `.ai/project.yml`
-  - **Acceptance Criteria:** No document claims the repo is at `Seuss27/`. `.ai/project.yml`'s
-    `repo:` is `glunk-works/bedrock-serverless-rag` and its comment describes the *current*
-    state. `docs-consistency` finds no contradiction across `load_bearing_docs`.
+  - **Also record the re-homing, or the findings silently vanish.** This sprint no longer
+    closes everything its original header claimed:
+    - **F45 — closed, by *removal*.** State the mechanism, not just the outcome: the dormant
+      role was deleted upstream, not corrected. A future reader who sees "F45 closed" and
+      assumes a boundary exists will build on a control that was never built.
+    - **F41, F42 — remain OPEN, org-wide.** `resume_optimizer_policy` and the other project
+      policies still carry the escalation. Link the upstream issue from § 9.4.
+    - **F57 — half closed** (`path` landed; `permissions_boundary` → S2).
+      **F58 → S2** with Task 2b. **F55 → MW**, re-pointed at `bootstrap/state-backend.tf`.
+      **F56 → S2** (it does not arise while no plan role exists).
+  - **Acceptance Criteria:** No **operative** reference claims the repo is at `Seuss27/` — per
+    Task 4's rewritten criterion, the sprint plans and the roadmap's finding inventory keep
+    theirs as historical record. `.ai/project.yml`'s `repo:` is
+    `glunk-works/bedrock-serverless-rag` and its comment describes the *current* state.
+    Every re-homed finding above appears in its **new** sprint's plan, not only in this one —
+    a finding moved out of a sprint and not written into its destination is a finding dropped.
+    `docs-consistency` finds no contradiction across `load_bearing_docs`.
 
 ---
 
 ## Definition of Done
 
 `gates.green` passes. Every S0 required check is green **under the new owner**. CI has
-authenticated to AWS from `glunk-works/…` in a real run. The upstream `global-bootstrap` PR
-is merged **and applied**. `/critic-gate` has run — propose `security-critic` (F45 is the
-entire reason this sprint has an ordering constraint) and `docs-consistency` (Task 4 rewrites
-the repo path across every load-bearing document).
+authenticated to AWS from `glunk-works/…` in a real run. The upstream `global-bootstrap`
+**deletion** PR (`T2′`) is merged **and applied**, and
+`aws iam get-role --role-name github-actions-bedrock-serverless-rag` returns `NoSuchEntity`
+against live AWS. The upstream **F41 issue exists** and is linked from § 9.4. Task 3's
+**narrow has completed in the same session as the transfer** — it is a blocking criterion, not
+a trailing step. **Every finding re-homed by the 2026-08-06 reshape (F55 → MW; F56, F58 and
+F57's boundary half → S2) is written into its destination sprint's plan**, not merely removed
+from this one.
+
+`/critic-gate` has run — propose `security-critic` (F45 is the entire reason this sprint has
+an ordering constraint, and the reshape changed *how* it is closed) and `docs-consistency`
+(Task 4 rewrites the repo path across every load-bearing document, and its criterion now
+deliberately **exempts** the historical record — an auditor working from the old
+"grep returns nothing" wording will report false positives).
 
 ---
 
@@ -515,3 +719,65 @@ amendments are read as *findings against the plan*, not as a rewrite of someone'
 **Not adopted.** The review's suggestion to fold Task 2a into Task 2 was rejected: they land in
 **different repositories** and the ordering between them is the whole point, so one task
 spanning both invites a single PR that satisfies neither ordering.
+
+---
+
+## Critical review — amendments from the 2026-08-06 pre-implementation review
+
+Run against live state (AWS, GitHub, and upstream `global-bootstrap`) rather than against the
+plan text, at the moment ST's HITL gate was cleared. Recorded as findings against the plan.
+
+**The reshape itself**
+
+- **The sprint gated an irreversible act on its own hardest task.** Task 2 required a full
+  permissions-boundary construction — merged *and* human-applied, in another repository —
+  before the transfer could proceed. Task 2b's own text warns that a boundary built under
+  unblock pressure gets **weakened rather than corrected**; Task 2a's body names the exact
+  moment ("fails at *verify*, when the escalation-capable local role has not yet been
+  deleted"). The plan therefore identified the failure mode and then **built the schedule that
+  produces it**. Closing F45 by deleting the inert role removes the pressure entirely, at the
+  cost of deferring work that had no reason to be on this sprint's critical path.
+- **A dormant resource is cheaper to delete than to secure.** The plan considered only
+  *correcting* the upstream policy. Because F44 already establishes the role is inert, deletion
+  was always available and strictly dominates on risk, size and reversibility. Worth
+  generalising: when a finding is "a thing that will become dangerous," check whether the thing
+  is needed *yet* before designing its control.
+
+**Errors found in the plan by checking live state**
+
+- **Task 0 did not need an apply.** The header listed it as one of three human applies. Its
+  drift was *code behind live*, so committing `iam:ListAttachedRolePolicies` closed the gap in
+  the direction that writes nothing — verified `No changes.` The sprint's risk surface was
+  overstated by one apply against the unbacked-up `bootstrap/` state file, which is exactly the
+  file F48 is about.
+- **Task 4's headline acceptance criterion was unachievable.** `grep -rn 'Seuss27'` returning
+  nothing would require deleting the string from five sprint plans and the roadmap's F17
+  evidence row — i.e. rewriting the historical record. Rewritten as an explicit operative-file
+  list, with the historical record explicitly exempted.
+- **Task 4 listed a variable that does not exist** (`AWS_PLAN_ROLE_ARN` — S1 creates it) and
+  told the executor to repoint the surviving two at `global-bootstrap` outputs that, after
+  `T2′`, contain no entry for this project. Following it would leave CI unable to authenticate
+  immediately after an irreversible transfer.
+- **Task 3's acceptance criterion checked for the wrong thing.** "The role resolves to the
+  corrected policy" inverts to "the role is absent" under `T2′`.
+
+**Resolved rather than carried**
+
+- **Org-level rulesets cannot exist.** `glunk-works` is on the **Free** plan; the rulesets API
+  returns 403-upgrade-required. The BR-D9-from-outside deadlock is impossible on the current
+  plan — but this is **plan-dependent**, and the first lookup returned a **404 for a missing
+  `admin:org` scope**, which reads identically to "none exist" if not inspected. The
+  distinction between *verified absent* and *could not look* is the whole value of the check.
+- **Org base permission is `read`**, so the Critical Review's concern that the transfer grants
+  org members write access is materially smaller than written. Still a real change from
+  single-owner, and still worth a conscious decision — but not the escalation it was framed as.
+- **Task 1's guard verified against live state**, not inferred: `tofu plan -destroy` targeting
+  the OIDC provider fails with `Instance cannot be destroyed … lifecycle.prevent_destroy set`.
+
+**Carried forward, unresolved**
+
+- **F48's state backup is still outstanding** and now gates *only* Task 3's two applies. Fewer
+  applies is less exposure, not none: those two are still against a single-machine, gitignored
+  state file that is the only record of the org-shared OIDC provider.
+- **F41/F42 remain open org-wide.** This sprint's deletion closes them for one project by
+  removing the project, which is not the same as fixing the pattern.

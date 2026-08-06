@@ -106,40 +106,29 @@ the transfer **succeeding**, quietly, with a side effect nobody reviewed.
     mandates three applies against exactly this file**, so the mitigation is promoted here. One
     line, and it is the `prevent_destroy`-class value-per-line change of this sprint.
 
-- **Task 1: Stop this repo from being able to break the organization (F40 stopgap)**
-  - **⚠️ Task 0 must show `No changes.` first.** This task needs no apply of its own (a
-    `lifecycle` block produces no diff), but if you do apply for any reason, F50 rides along.
-  - **Description:** Confirmed 2026-08-05: this repo's `bootstrap/` and `global-bootstrap`
-    share **one** AWS account. An account holds exactly one OIDC provider per URL, and this
-    repo **creates** the one `global-bootstrap` reads as a `data` source — so this repo's
-    OpenTofu state owns the federation endpoint every glunk-works pipeline authenticates
-    through, with no protection against deletion.
-    Add, and have a human apply:
-    ```hcl
-    resource "aws_iam_openid_connect_provider" "github_actions" {
-      # ...
-      lifecycle {
-        prevent_destroy = true
-      }
-    }
+- **Task 1: ~~Stop this repo from being able to break the organization~~ — ✅ DONE, VERIFY ONLY**
+  - **⚠️ DO NOT IMPLEMENT THIS. It is merged.** `prevent_destroy` on the org-shared OIDC
+    provider landed in **PR #17 (`1ad5aa7`)** and was verified against live state on 2026-08-05.
+    The body below used to read *"Add, and have a human apply: `lifecycle { prevent_destroy =
+    true }` … **Do this first, before anything else in this sprint**"* while its own acceptance
+    criterion said *"✅ VERIFIED."* A literal coder either adds a **duplicate `lifecycle` block**
+    (an HCL error) or re-triggers a `bootstrap/` apply — which is exactly the *"an unrelated
+    apply carries F50's revocation along"* scenario **Task 0 exists to prevent**.
+  - **Why it was done, retained as the record:** this repo's `bootstrap/` and `global-bootstrap`
+    share **one** AWS account. An account holds exactly one OIDC provider per URL, and this repo
+    **creates** the one `global-bootstrap` reads as a `data` source — so this repo's OpenTofu
+    state owns the federation endpoint every glunk-works pipeline authenticates through. Without
+    the guard, a routine `tofu destroy` here takes down CI for the whole organization (F40).
+    `bootstrap/oidc-setup.tf:29-36` carries the `lifecycle` block and a comment explaining why,
+    referencing BR-D18 — ownership moves upstream in S2-T3; this is the stopgap until it does.
+  - **Verification only (no apply, no edit):**
     ```
-    Add a comment above it stating **why**: this resource is shared org-wide, `global-bootstrap`
-    consumes it via `data.aws_iam_openid_connect_provider.github`, and destroying it breaks CI
-    for every glunk-works repository. Reference BR-D18 — ownership moves upstream in S2; this
-    is the stopgap until it does.
-    **Do this first, before anything else in this sprint.** It is one line against a standing
-    organization-wide outage risk and it depends on nothing.
-  - **Target Files:** `bootstrap/oidc-setup.tf`
-  - **Acceptance Criteria:** `tofu plan` in `bootstrap/` reports `No changes.` — a `lifecycle`
-    meta-argument produces no diff, so this is both the "nothing else changed" check and the
-    F50 gate. A deliberate destroy is **refused**:
-    `tofu plan -destroy '-target=aws_iam_openid_connect_provider.github_actions'` must fail
-    with `Instance cannot be destroyed … lifecycle.prevent_destroy set`. **Verify it, do not
-    assume it. ✅ VERIFIED 2026-08-05 against live state (PR #17).** No apply is required.
-    Note for a PowerShell operator: quote the `-target=…` argument (or use `--%`), or
-    PowerShell splits it at the `.` and tofu rejects it as an incomplete resource address.
-    `bootstrap/providers.tf` also sets no `profile`, so `$env:AWS_PROFILE = "admin-sso"` must
-    be set in the shell first (F49).
+    tofu plan -destroy '-target=aws_iam_openid_connect_provider.github_actions'
+    ```
+    must fail with `Instance cannot be destroyed … lifecycle.prevent_destroy set`.
+    In PowerShell, **quote the `-target=…` argument** (or use `--%`) or it splits at the `.` and
+    tofu rejects it as an incomplete resource address. `bootstrap/providers.tf` sets no
+    `profile`, so `$env:AWS_PROFILE = "admin-sso"` must be set in the shell first (F49).
 
 - **Task 2: Fix the upstream project entry BEFORE the transfer (F45, F42)**
   - **Description:** A pull request against **`glunk-works/global-bootstrap`**. Two changes,

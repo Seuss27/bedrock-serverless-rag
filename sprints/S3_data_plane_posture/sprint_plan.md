@@ -29,14 +29,22 @@
 vector store, and make the IaC describe its own names instead of repeating them as string
 literals.
 
-**Closes:** F6, F7, F8, F9, F10, F11, F12.
+**Closes:** F6, F7, F10, F12. **⚠️ Four of the original seven no longer close here:** **F8**
+closes *by supersession and only in part* — the org bucket has versioning and encryption but no
+public-access block, no TLS-only policy, and a lock table with neither `prevent_destroy` nor
+PITR, and those four carry forward as an upstream issue (roadmap § 9.4), so **do not tick F8
+whole**; **F9** (customer-managed key) is **cut** by BR-D23 and stays open, deliberately, until
+the corpus holds data; **F11** (hardcoded names) moves to **`MW-T1`**, folded into the rebuild.
 
-**Dependencies:** **S2 must be merged — and S2-T1 in particular.** Every acceptance
-criterion below is a statement about `tofu plan` output ("shows an update, not a
-replacement", "`No changes.`", "tag additions and no replacements"). Until S2-T1 reconciles
-state by import, **the plan describes a system that is not deployed** (F39: the resources
-exist in AWS and are absent from CI's state; no CI apply has ever succeeded). Running S3
-before that reconciliation means checking those criteria against a fiction.
+**Dependencies:** **`MW` must be merged, and S2 after it.** *(Corrected 2026-08-05: this
+previously said "S2 must be merged — and S2-T1 in particular", and that state is reconciled
+"by import". S2-T1 moved to `MW-T1`, and **BR-D19's import rule was REVERSED by BR-D20** —
+reconciliation is teardown and rebuild.)* Every acceptance criterion below is a statement about
+`tofu plan` output ("shows an update, not a replacement", "`No changes.`", "tag additions and
+no replacements"). Until `MW` reconciles state, **the plan describes a system that is not
+deployed** (F39: the resources exist in AWS and are absent from CI's state; no CI apply has
+ever succeeded). Running this sprint before that reconciliation means checking those criteria
+against a fiction.
 
 Beyond that: every resource here is created by the CI role, so hardening the data plane
 while that role can escalate to admin protects the wrong thing first. And the upstream
@@ -58,9 +66,14 @@ to account administrator in an account shared with the whole organization (F1/F4
 - Task 1 depends on an **externally verifiable fact** — whether Amazon Bedrock Knowledge
   Bases can reach a VPC-restricted OpenSearch Serverless collection. Verify it against
   current AWS documentation before designing; do not assume either answer.
-- OpenSearch Serverless bills by OCU-hour. A collection replacement means paying to re-embed
-  the whole corpus. Confirm the corpus is re-ingestible (the S3 originals still exist) before
-  any task that can trigger a replacement.
+- OpenSearch Serverless bills by OCU-hour, so an idle collection is a standing cost — which is
+  why the budget moved to S0 (BR-D23). **⚠️ This bullet used to continue: *"A collection
+  replacement means paying to re-embed the whole corpus. Confirm the corpus is re-ingestible
+  (the S3 originals still exist) before any task that can trigger a replacement."* That is
+  deleted.** The corpus is **empty**; there is nothing to re-embed and nothing to confirm. It is
+  exactly the data-preservation caution **BR-D20 outlaws**, and it sat in the section a coder
+  reads before the tasks. **Let resources be replaced** — replacement is free here, and
+  contorting a change to avoid it is the actual error.
 
 ---
 
@@ -99,13 +112,16 @@ to account administrator in an account shared with the whole organization (F1/F4
     - `aws_s3_bucket_public_access_block` with all four flags `true`. This is the single
       highest-value control in the sprint: it makes accidental exposure structurally
       impossible rather than merely absent.
-    - `aws_s3_bucket_versioning` — `Enabled`. Source documents are the only unreproducible
-      asset here; the embeddings are derived.
+    - ~~`aws_s3_bucket_versioning` — `Enabled`.~~ **CUT by BR-D23.** The justification given
+      here was *"source documents are the only unreproducible asset"* — **there are no source
+      documents.** Versioning on an explicitly disposable corpus (BR-D20) protects nothing and
+      bills for it. Revisit if the corpus stops being disposable.
     - `aws_s3_bucket_policy` with a `Deny` on `s3:*` where
       `Bool {"aws:SecureTransport": "false"}`, and a second `Deny` on `s3:PutObject` where
       `StringNotEquals {"s3:x-amz-server-side-encryption": ...}` matching Task 4's choice.
-    - `aws_s3_bucket_logging` to a separate, dedicated log bucket (itself with a public
-      access block, versioning, and a lifecycle rule) — never logging into itself.
+    - ~~`aws_s3_bucket_logging` to a separate, dedicated log bucket.~~ **CUT by BR-D23** — a
+      second standing bucket, with its own public-access block and lifecycle rule, to log access
+      to a bucket holding **zero objects**. Revisit when the source bucket holds anything.
     - `aws_s3_bucket_lifecycle_configuration` with `abort_incomplete_multipart_upload` after
       7 days.
     - **`force_destroy` stays `true` — reversed 2026-08-05 (BR-D20).** The original plan
@@ -120,7 +136,13 @@ to account administrator in an account shared with the whole organization (F1/F4
   - **Acceptance Criteria:** Checkov's S3 checks pass on `modules/` with no suppression.
     `aws s3api get-public-access-block --bucket <name>` returns all four `true` after apply.
     A `curl` of any object URL over plain HTTP is denied. `grep 'force_destroy' modules/`
-    shows a `var.` reference, and the variable's default is `false`.
+    shows a `var.` reference, and **the variable's default is `true`**.
+    **⚠️ This criterion said `false` and directly reversed its own task body**, which reads
+    *"a variable defaulting to `true`"*. Executed literally it would ship
+    `force_destroy = false`, making `tofu destroy` **fail** on a bucket with objects — re-wedging
+    the exact cycle F51 exists to fix, on a project whose stated design is destroy-and-rebuild
+    (BR-D20). **The body was right; the criterion was wrong.** It flips to `false` on the day a
+    real corpus is ingested, which is the same day BR-D10 stops being forward-looking.
 
 - **Task 3: ~~Harden the state backend (F8)~~ — SUPERSEDED by S2-T4**
   - **⚠️ Do not execute this task.** BR-D17 resolved in favour of `global-bootstrap` owning
@@ -347,20 +369,33 @@ propose `architect` (the replacement hazards are the whole risk here) and `secur
   that does not support tag updates (Task 5). Each task's acceptance criterion is written as
   a statement about the *plan output* rather than the file content, because the file can look
   right and the plan still be destructive.
-- **Task 6's success condition is `No changes.`** That inversion is deliberate: a
-  parameterization refactor that produces a diff has changed a value, and the values in
-  question are the ones that force collection replacement. A coder that "fixes" a small diff
-  by accepting it is doing the exact damage the task exists to avoid.
-- **Task 7 deliberately does not do the thing it appears to be setting up.** Bumping the
-  provider *and* switching `dynamodb_table` → `use_lockfile` in one change means that if the
-  result cannot plan, you cannot tell which half broke it — on the state backend, which is
-  the one component whose failure blocks the fix. Split, with the second half filed as an
-  issue.
-- *Task 3 hardens `bootstrap/`, which is human-applied, inside a sprint whose other tasks are
-  CI-applied.* That split is real and must be sequenced: `bootstrap/` applies first (a human,
-  local), then the module changes go through the pipeline. A PR that lands both at once will
-  have one half applied and the other pending until a human runs the other.
-- *The ordering hazard with S4 stands:* S4-T4 rewrites `create_index.py` and
+- **⚠️ Task 6 MOVED to `MW-T1`, and this bullet's success condition was REVERSED before it
+  moved.** It used to read: *"Task 6's success condition is `No changes.` … A coder that
+  'fixes' a small diff by accepting it is doing the exact damage the task exists to avoid."*
+  That was the **pre-BR-D20** rule, and it contradicted Task 6's own body, which says *"pick
+  good names now … and **accept the replacement**."* Two sections of one task disagreed with
+  the third. **Under BR-D20 the replacement is free and desirable** — the corpus is empty, and
+  renaming during `MW`'s rebuild costs nothing, whereas preserving the current bad names would
+  freeze them permanently. The name fix is therefore folded into the rebuild (BR-D23) rather
+  than run as a separate no-op refactor.
+- **Task 7's `use_lockfile` half is now moot — `dynamodb_table` STAYS** (BR-D22, amended
+  2026-08-05). This bullet used to argue for *splitting* the provider bump from a
+  `dynamodb_table` → `use_lockfile` switch so a broken plan could be attributed to one half.
+  Sound reasoning, but the switch is no longer happening at all: the lock table this repo
+  migrates onto is the org's `global-tofu-lock`, **shared with `bounty-infra`, `tri-loop` and
+  `resume-optimizer`**, so retiring it would force every consumer to raise its OpenTofu floor
+  and rewrite its backend block in lockstep. **Task 7 is now the provider-version
+  reconciliation only** (`~> 5.0` in `environments/ai-lab` vs `~> 6.0` in `bootstrap/`), still
+  sequenced after S2-T4.
+- ~~*Task 3 hardens `bootstrap/`, which is human-applied…*~~ **Deleted 2026-08-05.** Task 3 is
+  marked *"⚠️ Do not execute this task"* — superseded by S2-T4 — so this bullet was sequencing a
+  human `bootstrap/` apply for work that must not happen. **There is no human apply in this
+  sprint.** *(F8 does not close whole on supersession: the org bucket has versioning and
+  encryption but **no public-access block, no TLS-only policy**, and its lock table has neither
+  `prevent_destroy` nor PITR — those four carry forward as an upstream issue, roadmap § 9.4.)*
+- *The ordering hazard with S4 is now internal — S3 and S4 are one sprint (BR-D23), and
+  S4-T4 split: its retry half went to `MW-T3`, its destructive-delete guard stayed.* What was
+  S4-T4 rewrites `create_index.py` and
   `automation.tf`. Nothing in S3 touches either file, so S3 and S4 do not conflict — but if
   Task 1 concludes "VPC endpoint," `create_index.py` can no longer reach the collection from
   a public runner, and that becomes a hard dependency for S4-T4. Task 1 must say so in its

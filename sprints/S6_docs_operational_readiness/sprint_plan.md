@@ -17,14 +17,18 @@
 > - **T3 (cost control): MOVED EARLIER, to S0.** Nothing remains here. *(The AOSS capacity-limit
 >   half is dead — `aws_opensearchserverless_account_settings` does not exist; see § 5.1.)*
 > - **T4/T5: MERGE.** BR-D13 is resolved and ST executes the transfer, so T4 is now a
->   **confirmation pass**, not a branch on an undecided question. Its body still branches — read
->   it as confirmation only.
+>   **confirmation pass**. Its body used to retain the full transfer checklist and an *"if
+>   staying"* branch — **both deleted**, because S6 runs long after ST and a coder following that
+>   checklist would attempt the transfer a second time.
 
 **Sprint Goal:** Make the repo's prose true again, give the system the operational documents
 it has never had (runbooks, cost control, teardown), and close the two open governance
 questions.
 
-**Closes:** issue #8, BR-D13. Adds README.md to `load_bearing_docs`.
+**Closes:** issue #8, **F53** (the README half — S0 deletes the scaffolding half), **F49**
+ (by documenting the `AWS_PROFILE` export, which is the only fix available while `bootstrap/`
+ is being retired rather than hardened). Confirms **BR-D13**. Adds README.md to
+ `load_bearing_docs`.
 
 **Dependencies:** **S1–S5 merged.** A README rewritten before the architecture stops changing
 is a README that needs rewriting again — which is how #8 came to exist.
@@ -72,12 +76,13 @@ as real values, including in a copied-and-pasted error message.
   - **Description:** Add `docs/runbooks/` covering the procedures this system needs and does
     not have. Each is a numbered procedure with a stated precondition, the commands, and a
     verification step — not prose:
-    - **`ingest.md`** — add documents to the curated `corpus/` prefix (S4-T3), trigger a KB
-      sync, verify the ingestion job succeeded, verify retrieval returns the new content.
-    - **`reindex.md`** — the deliberate, destructive index-recreate path: the double guard
-      from S4-T4, what is lost, the expected re-embedding cost, and the verification that the
-      document count returned to its prior value. This runbook is the *only* sanctioned way
-      that operation happens (BR-D10).
+    ⚠️ **TWO runbooks, not five (BR-D23).** `ingest.md` and `reindex.md` are **cut** — they
+    document operations never performed, on a corpus that does not exist, and `reindex.md`'s
+    *"expected re-embedding cost"* and *"document count returned to its prior value"* are
+    assertions about data there is none of. `incident-injection.md` is **cut** because it
+    depends on S4-T2's alarm, which BR-D23 also cut. Write them when the operations become
+    real; **`reindex.md` in particular becomes required the day BR-D10 stops being
+    forward-looking**, since it is meant to be the only sanctioned path for that operation.
     - **`teardown.md`** — ⚠️ **promoted 2026-08-05 (BR-D20): this is the PRIMARY operating
       procedure, not a cost footnote.** The project exists to be stood up and torn down, so
       teardown is a first-class workflow and `destroy` → `apply` → verify is its acceptance
@@ -88,36 +93,27 @@ as real values, including in a copied-and-pasted error message.
     - **`break-glass.md`** — CI has lost AWS access (a bad OIDC trust policy, S2's known
       hazard). Recovery is a local admin apply of `bootstrap/`; state the exact sequence and
       why it works (BR-D1: `bootstrap/` is deliberately not CI-managed).
-    - **`incident-injection.md`** — a guardrail intervention alarm fired (S4-T2). How to find
-      the invocation log, identify the source document from the retrieved references, remove
-      it from `corpus/`, re-sync, and verify.
-  - **Target Files:** `docs/runbooks/*.md`
-  - **Acceptance Criteria:** Five runbooks exist. Every command in them has been executed at
-    least once, except the destructive ones (`reindex`, `teardown`), whose **preconditions and
-    guard behavior** have been verified without completing the destructive step. Every AWS
-    identifier is a placeholder.
+  - **Target Files:** `docs/runbooks/teardown.md`, `docs/runbooks/break-glass.md`
+  - **Acceptance Criteria:** **Two** runbooks exist. Every command in them has been executed at
+    least once, except `teardown`'s destructive step, whose **preconditions and guard
+    behaviour** are verified without completing it. Every AWS identifier is a placeholder.
+    **`break-glass.md` states the `AWS_PROFILE` export** — with `Invoke-Tofu.ps1` deleted, this
+    and the README are the only places F49's setup step is written down, and a break-glass is
+    exactly when nobody wants to debug a credential chain.
 
-- **Task 3: Cost control**
-  - **Description:** OpenSearch Serverless has a minimum OCU floor that bills continuously,
-    and this is a personal lab whose most likely real-world failure is a surprise bill, not a
-    breach. Add:
-    - ⚠️ **Priority raised 2026-08-05 (BR-D20).** For an ephemeral lab whose data is
-      worthless and whose OCUs bill hourly, **an environment left running is the most likely
-      real-world loss this project will ever produce** — larger in expectation than any
-      finding in § 3.4. Treat cost control as a primary control, not housekeeping.
-    - An `aws_budgets_budget` with a monthly threshold and an email notification at 50 %,
-      80 %, and 100 % of budget, driven by a variable so the amount is not hardcoded.
-    - An explicit `capacity_limits` setting on the AOSS collection's account-level capacity
-      configuration (`aws_opensearchserverless_account_settings` or equivalent), so a runaway
-      ingestion cannot scale OCUs without bound.
-    - A `docs/cost.md` recording the standing monthly floor, what drives it, and the teardown
-      trigger (BR-D11's lab posture means "destroy it when idle" is a legitimate answer).
-  - **Target Files:** new `modules/aws-bedrock-rag/budget.tf` or
-    `environments/ai-lab/budget.tf`, `docs/cost.md`
-  - **Acceptance Criteria:** `tofu plan` shows the budget and the capacity limit. The budget's
-    notification address is passed as a variable and **not committed** — an email address in
-    a public repo is spam bait and PII. `docs/cost.md` states an actual observed monthly
-    figure, taken from Cost Explorer, not an estimate.
+- **Task 3: ~~Cost control~~ — MOVED EARLIER, to S0**
+  - **Moved 2026-08-05 (BR-D23).** This task stated in its own words that an environment left
+    running is *"the most likely real-world loss this project will ever produce — larger in
+    expectation than any finding in § 3.4"* — and was then scheduled **ninth**. That is the
+    clearest severity/ordering mismatch in the roadmap, and it is fixed by moving the work, not
+    by re-arguing the priority. The `aws_budgets_budget` (50/80/100 % notifications, amount
+    driven by a variable, notification address a variable and **never committed**) and
+    `docs/cost.md` are now **S0**. **Do not execute it from here.**
+  - **⚠️ The capacity-limit half is DEAD, wherever it runs.**
+    `aws_opensearchserverless_account_settings` **does not exist under any spelling** — provider
+    issue `hashicorp/terraform-provider-aws#41245`, open since 2025-02-05. An AOSS capacity
+    limit is console/CLI-only. Do not write it into a task; if it is wanted, it is a manual
+    step recorded in `docs/cost.md`.
 
 - **Task 4: Execute or confirm the BR-D13 outcome — where this repo lives**
   - **⚠️ The decision moved.** BR-D13 was **promoted out of this sprint on 2026-08-05** and is
@@ -131,22 +127,25 @@ as real values, including in a copied-and-pasted error message.
     this task is now a confirmation pass plus the `pr_base` half: verify no `Seuss27`
     reference survives, that the ruleset and merge settings still hold under the org, and that
     no org-level ruleset has since appeared that this repo cannot satisfy. The original
-    transfer checklist is retained below for reference — repository variables (`AWS_OIDC_ROLE_ARN`,
-    `AWS_PLAN_ROLE_ARN`) do **not** follow a transfer, the `production` Environment and its
-    reviewers do not, the ruleset does not, and — critically — **every OIDC trust policy
-    subject contains the owner name**, so a transfer breaks CI's AWS authentication until
-    `bootstrap/` is re-applied by a human. Sequence it: enumerate new subjects, apply
-    `bootstrap/` with **both** old and new subjects, transfer, verify, remove the old ones
-    (the same widen-then-narrow discipline as S2-T2). If the answer is **stay**, say why and
-    close the decision.
+    ⚠️ **The transfer checklist that used to sit here has been DELETED, not retained.** It
+    instructed the coder to *"apply `bootstrap/` with both old and new subjects, transfer,
+    verify, remove the old ones"* and offered an *"if the answer is **stay**"* branch. **S6 is
+    dependency-gated on S1–S5, so it runs long AFTER ST has already transferred the repo** — a
+    coder executing that checklist would attempt the transfer **a second time**, against a repo
+    that has already moved. There is no branch: the transfer is decided (BR-D13) and executed
+    (ST-T3). *(The retained text also mis-cited the widen-then-narrow discipline as "S2-T2";
+    widen-then-narrow is **ST-T3**. S2-T2 is role adoption and contains no such step — a
+    dangling procedural cross-reference in the one procedure that is irreversible.)*
+    **This task verifies; it does not transfer.**
     Also revisit the `pr_base: main` deviation from the conventions' `develop` — the sibling
     repos both use `main`, so the likely outcome is confirming the deviation and recording it
     as intentional rather than as drift.
   - **Target Files:** `docs/hardening_roadmap.md`, possibly `.ai/project.yml`, `CLAUDE.md`
-  - **Acceptance Criteria:** BR-D13 no longer says "open question." If transferring, the
-    checklist above is executed and CI has authenticated to AWS after the move — observed,
-    not assumed. If staying, the reason is one paragraph and `.ai/project.yml`'s `repo` value
-    is confirmed correct.
+  - **Acceptance Criteria:** BR-D13 records the transfer as **executed**, with the date. No
+    `Seuss27` reference survives anywhere. The ruleset and merge settings still hold under the
+    org, and `gh api orgs/glunk-works/rulesets` has been read for any org-level rule this repo
+    cannot satisfy (a BR-D9 deadlock by another route). `.ai/project.yml`'s `repo` is
+    `glunk-works/bedrock-serverless-rag`. **No transfer is performed by this task.**
 
 - **Task 5: Close the documentation loop**
   - **Description:** Add `README.md` and `docs/runbooks/**` to `load_bearing_docs` in
@@ -155,7 +154,7 @@ as real values, including in a copied-and-pasted error message.
     set and fix every contradiction it finds. Update `CLAUDE.md`'s closing note, which
     currently says the README is not trusted — that statement becomes false the moment Task 1
     lands, and a stale warning about staleness is its own small joke at the repo's expense.
-    Update the roadmap's § 8 status log with every sprint's completion date.
+    Update the roadmap's § 10 status log with every sprint's completion date.
   - **Target Files:** `.ai/project.yml`, `CLAUDE.md`, `docs/hardening_roadmap.md`
   - **Acceptance Criteria:** `docs-consistency` returns no unresolved contradiction across
     the full audit set. `CLAUDE.md` contains no claim that the README is untrusted.
@@ -217,7 +216,7 @@ BR-D13 is closed.
   actually need one — break-glass and an injection incident — are exactly when discovering a
   wrong command is worst. The destructive runbooks are the stated exception, verified to
   their guard and no further.
-- *`docs-consistency` will flag intentional historical prose.* The roadmap's § 8 status log
+- *`docs-consistency` will flag intentional historical prose.* The roadmap's § 10 status log
   and the finding inventory describe past states on purpose. The agent's own brief is to
   distinguish a genuine contradiction from deliberate historical or aspirational prose; if it
   flags those, the fix is to make the framing unmistakable, not to delete the history.

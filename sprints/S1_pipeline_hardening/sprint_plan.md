@@ -145,8 +145,25 @@ admin-capable apply until S2 lands.
       on the command line is not acceptable.
     - `secrets-scan` — `gitleaks/gitleaks-action` with `fetch-depth: 0` (it scans the
       `base^..head` commit range and needs history a shallow clone lacks) and a committed
-      `.gitleaks.toml`. `GITLEAKS_LICENSE` is **not** required here — that requirement
-      applies to organization-owned repos, and this repo is user-owned. Do not add a
+      `.gitleaks.toml`.
+      **⚠️ `GITLEAKS_LICENSE` IS required by the time this sprint runs — the exemption below is
+      invalidated by the plan's own sprint order.** It used to read *"not required here — that
+      requirement applies to organization-owned repos, and this repo is user-owned."* True
+      today; **false when S1 executes**, because the order is S0 → **ST** → `MW` → S1, and
+      **ST-T3 transfers this repo to `glunk-works`**. Combined with T7 making `secrets-scan` a
+      **required check with `bypass_actors: []`**, the result is: the scan fails on a licence
+      error, it is required, nobody can bypass, **every PR in the repo becomes unmergeable**,
+      and the fix lives outside the repo entirely. That is the BR-D9 deadlock class arriving by
+      a route BR-D9 does not model.
+      **Do one of these, and say which in the PR body:** *(a)* reuse the **org-level
+      `GITLEAKS_LICENSE` secret `glunk-works` already holds** — preferred; or *(b)* hold
+      `secrets-scan` out of the required list until the licence is confirmed present.
+      **Second-order, and it needs recording:** this makes `GITLEAKS_LICENSE` **this repo's
+      first genuine secret**, and BR-D21's SSM pattern cannot serve a workflow `env:` value
+      without an AWS round-trip inside CI. **Record the BR-D21 exception for
+      Actions-consumed secrets** — § 9.5 names `GITLEAKS_LICENSE` as one of bounty-infra's
+      genuinely-secret values and never noticed this repo was about to acquire one.
+      Do not add a
       `pull-requests: write` permission for its comment feature; the action logs a warning
       and continues without it, and the check's verdict comes from the scan.
     - `zizmor` — `zizmorcore/zizmor-action`, job-scoped

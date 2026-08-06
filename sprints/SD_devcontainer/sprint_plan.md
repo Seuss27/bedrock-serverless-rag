@@ -25,7 +25,9 @@
 contributor — and any agent session — the exact pinned toolchain the CI checks run, on one
 Linux base, so local results and CI results are the same result.
 
-**Closes:** BR-D15 (new decision, recorded by this sprint). No `F` finding — this is capability
+**Closes:** nothing, while deferred. BR-D15 is **recorded but not yet earned** — the decision
+describes a devcontainer that does not exist, so treat it as a design intent rather than an
+in-force rule until Docker is available. No `F` finding — this is capability
 work, not remediation. It removes a recurring **class** of friction rather than a defect:
 Windows/PowerShell/CRLF drift, a missing `jq`, a `tofu` version that differs from the runner's.
 

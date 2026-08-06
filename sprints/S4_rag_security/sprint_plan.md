@@ -22,7 +22,11 @@
 hostile document content and the model, an audit trail of what was asked and retrieved,
 bounded ingestion, and no destructive data-plane operation reachable from `tofu apply`.
 
-**Closes:** F22, F23, F24, F25, F26, F28. (F27 — unfiltered retrieval — stays accepted under
+**Closes:** F22, F23, F25, F26, F28. **⚠️ F24** (no audit trail) does **not** close: the task
+that would have closed it is **cut for a blast-radius reason** — Bedrock invocation logging is a
+per-region singleton in a shared account (see the banner and roadmap § 5.1). It stays open as an
+**accepted** risk, not a scheduled one. **F46's retry half moved to `MW-T3`**; F23's
+destructive-delete guard stays here. (F27 — unfiltered retrieval — stays accepted under
 BR-D11 and is explicitly *not* closed here.)
 
 **Dependencies:** **S3 must be merged, and S2-T1 (state reconciliation) must have landed** —

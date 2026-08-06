@@ -32,19 +32,21 @@ Three OpenTofu roots, and the distinction matters for every change:
 
 > **This repo is under active hardening — read the roadmap before extending it.**
 > [`docs/hardening_roadmap.md`](docs/hardening_roadmap.md) is the reference of record: the
-> full finding inventory from the 2026-08-05 evaluation (**F1–F47**), the sprint sequence
-> (S0 governance → **ST org transfer** → S1 pipeline → S2 identity + state reconciliation →
-> S3 data-plane → S4 RAG security → S5 Python supply chain → S6 docs, with **SD** — the
-> devcontainer — running in parallel), and the locked decisions (**BR-D1..BR-D19**). It is
-> also the **threat model**.
+> full finding inventory from the 2026-08-05 evaluation (**F1–F58**), the sprint sequence
+> (S0 governance → **ST org transfer** → **MW make-it-work** → S1 pipeline → S2 identity +
+> `bootstrap/` retirement → **S3+S4 merged** data-plane and RAG → S5 Python cleanup → S6 docs;
+> **SD the devcontainer is DEFERRED**, not parallel), and the locked decisions
+> (**BR-D1..BR-D24**). It is also the **threat model**.
 >
 > Three facts shape every judgement call here. **This repo is PUBLIC.** **As of 2026-08-05
 > `main` has no branch protection and CI applies to AWS with no human approval** — until S0
 > and S1 land, assume nothing in `.github/workflows/` is blocking anything. And **the
 > committed IaC does not describe the deployed system**: the resources exist in AWS but are
 > absent from the state CI reads, and **no CI apply has ever succeeded** (F39, confirmed from
-> run `26788807269`). Treat `tofu plan` output as unverified until S2-T1 reconciles by
-> import.
+> run `26788807269`). Treat `tofu plan` output as unverified until **`MW`** reconciles state —
+> **by teardown and rebuild, never by import** (BR-D19, reversed by BR-D20: the corpus is
+> empty, so importing would be slower, riskier, and would freeze the current bad resource
+> names into the configuration).
 
 ## The working method (owned elsewhere — do not restate it here)
 
@@ -209,11 +211,14 @@ bare checkout by design.
   Read this first.
 - **`.ai/project.yml`** — this repo's parameterization of the working method.
 - **`docs/hardening_roadmap.md`** — reference of record **and threat model**: the finding
-  inventory, BR-D1..BR-D14, the sprint sequence, the public-repo rules.
-- **`sprints/*/sprint_plan.md`** — the per-sprint plans (S0–S6, plus the parallel **SD**
-  devcontainer track). Each carries a **Critical review** section recording the security,
-  logic, and execution objections raised against it — read that before executing the tasks,
-  not after.
+  inventory (**F1–F58**), **BR-D1..BR-D24**, the sprint sequence, **§ 5.1 what BR-D23 cut and
+  the premise that would bring each cut back**, the public-repo rules.
+- **`sprints/*/sprint_plan.md`** — the per-sprint plans: S0, **ST**, **MW**, S1, S2, S3+S4
+  (merged), S5, S6, plus **SD** which is **deferred** on a Docker precondition, not parallel.
+  Each carries a **Critical review** section recording the security, logic, and execution
+  objections raised against it — read that before executing the tasks, not after. **Sprints
+  reshaped by BR-D23 carry a banner under the title naming what was cut, moved or kept; the
+  task bodies below it were not all rewritten, so the banner wins.**
 - **`glunk-works/global-bootstrap`** — **read this before touching `bootstrap/`.** It is the
   organization's IaC foundation: the org state bucket + lock table (with per-project prefix
   isolation), and **one CI role per project** generated from `var.projects` — which already

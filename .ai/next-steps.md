@@ -6,12 +6,13 @@ Regenerate this at the end of every working session.
 
 ## Now
 
-**`implementing` — the three operator decisions are ANSWERED and the design amendments are
-committed. PR #18 is still unmerged. One commit of mechanical doc fixes remains.**
+**`review` — the amendment pass is COMPLETE. Both commits are pushed. PR #18 is still `OPEN`
+and unmerged, awaiting your review.**
 
-The cold-context review returned **SEND BACK**. The blockers it named are fixed; what is left
-is cross-reference repair, which was deliberately sequenced *after* the reshape so it is not
-done twice.
+The cold-context review returned **SEND BACK**. Every blocker it named is fixed, the three
+operator decisions are recorded as **BR-D22/23/24**, and the cross-reference repair ran *after*
+the reshape so it did not have to be done twice. **The merge is yours** — nothing here merged
+anything.
 
 ## What landed in the design commit
 
@@ -34,32 +35,55 @@ done twice.
   gains a blocking out-of-band state-backup criterion. ST-T3's narrow becomes blocking, with the
   username-reclamation reason stated.
 
-## Next — ONE commit of mechanical fixes, Sonnet/coder
+## Next — the amendment pass is COMPLETE. PR #18 is ready for your review.
 
-Against a written list, from the review comment on PR #18 (`gh pr view 18 --comments`):
+Both commits are on `chore/adopt-way-of-working` and pushed. **Nothing is merged** — #18 is
+still `OPEN`, and the merge is yours.
 
-- **The stale ID ranges** — four files give four answers. `.ai/project.yml:42` first (it is the
-  `decisions.log` schema key). Ranges are now **F1–F58** and **BR-D1–BR-D24**.
-- **The five surviving "reconcile by import" instructions** against BR-D19's reversal, including
-  in `CLAUDE.md`. *(The roadmap's own copy in § 5's ordering hazards is already fixed.)*
-- **The orphaned `Closes:` lines**, the dangling section references (S6-T5 cites "§ 8", which
-  does not exist), and the stale `file:line` citations after PR #17.
-- **S0's token prerequisite names `admin:repo_hooks`** — that is the *webhooks* scope. A literal
-  coder stops at instruction one.
-- **`[M2]` items 3 and 7 — two direct file edits, not doc fixes.** `.claude/settings.json`'s deny
-  list fails open on `tofu state`/`import`/`init -migrate-state` and on `gh api -X DELETE`;
-  **verify the `PowerShell(...)` entries are a real tool name or delete them — a placebo control
-  is worse than a known gap.** *(The `Invoke-Tofu.ps1` gap in that item is **already closed** —
-  the wrapper was deleted 2026-08-05, which removes the subprocess surface rather than adding a
-  deny rule for it. Do not add `Bash(*Invoke-Tofu*)`; there is nothing to deny.)*
-  `.gitignore` needs F54's one-liner plus `tfplan`, `plan.json`, `.venv/`.
-- **`CLAUDE.md`'s Actions rules are missing four** (`[M2]` § 4), and one of them is what makes F3
-  a code-execution bug rather than a least-privilege smell: *a `pull_request`-triggered job runs
-  the workflow file from the PR branch.* Also: `workflow_run` and `issue_comment` are unbanned,
-  and `actions/github-script`'s `script:` block is `run:`-equivalent for injection but is not
-  covered by the current wording — **S1-T6's acceptance grep would pass it.**
+**What the mechanical pass fixed**, against the review comment on #18
+(`gh pr view 18 --comments`):
 
-**Amend #18 in place — do not merge-then-fix.**
+- **All five "reconcile by import" survivals** — `CLAUDE.md`, the roadmap's ordering hazards,
+  § 9.3, this file, and S3's dependency block. BR-D19 was reversed by BR-D20; reconciliation is
+  teardown-and-rebuild, and it happens in `MW`.
+- **Every stale ID range** — `CLAUDE.md` (×3), `.ai/project.yml`'s `decisions.log` key, this
+  file. Ground truth is **F1–F58** and **BR-D1–BR-D24**, verified by counting.
+- **The three blockers a coder would have hit hardest.** S3-T2's `force_destroy` acceptance
+  criterion said `default = false` and reversed its own body — it would have re-wedged
+  `tofu destroy`, which is the exact cycle F51 exists to fix. S0's token prerequisite named
+  `admin:repo_hooks`, the *webhooks* scope, and would have halted the sprint at instruction one.
+  ST-T1's body told a coder to re-implement work merged in PR #17 — now `DONE, VERIFY ONLY`.
+- **The gitleaks deadlock** (S1-T3/T7): the licence exemption was true when written and false by
+  the time S1 runs, because ST transfers the repo first. Left unfixed it makes a required,
+  unbypassable `secrets-scan` fail on a licence error and **every PR unmergeable**. Two
+  sanctioned resolutions are now written into the task, plus the BR-D21 consequence — this
+  becomes the repo's first genuine secret.
+- **S6-T4's retained transfer checklist — deleted, not annotated.** S6 runs long after ST, so a
+  coder following it would attempt the transfer a second time.
+- Stale `file:line` citations (**re-verified against the live files, not copied from the
+  review**), dangling `§ 8` / `S2-T2` / `S31` cross-references, the orphaned `Closes:` lines,
+  and the `gh label edit` / `gh issue list --state all` command forms.
+
+**Left deliberately open, and both need your call rather than a coder's:**
+
+1. **`.claude/settings.json`'s deny list** still fails open on `tofu state`, `tofu import` and
+   `tofu init -migrate-state` — the three verbs S2-T3/T4 actually use against org-shared state,
+   and the ones the plan itself calls *"the correct verb and the dangerous one"* — and on
+   `gh api -X DELETE`. **And its `PowerShell(...)` entries need verifying as a real registered
+   tool name or deleting**; if they are not one, they read as protection while being inert,
+   which is worse than a known gap. *(The `Invoke-Tofu.ps1` entry that item also called for is
+   moot — the wrapper was deleted, which removes the surface rather than denying it.)*
+2. **`.gitignore`** still needs F54's `.env*` + `!.env.example`, plus `tfplan`, `plan.json`
+   (S1-T4 creates both by those exact names) and `.venv/`.
+
+Both are live-behaviour changes to files that govern what an agent may do, which is why they are
+not bundled into a docs commit.
+
+**`CLAUDE.md`'s Actions rules are still missing four** (`[M2]` § 4) — most importantly that *a
+`pull_request`-triggered job runs the workflow file from the PR branch*, which is what makes F3
+a code-execution bug rather than a least-privilege smell. Also: `workflow_run` and
+`issue_comment` are unbanned, and `actions/github-script`'s `script:` block is `run:`-equivalent
+for injection but **S1-T6's acceptance grep would pass it**. Worth doing before S1.
 
 ## Sprint order (BR-D23)
 

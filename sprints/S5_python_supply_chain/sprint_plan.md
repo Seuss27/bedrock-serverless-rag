@@ -33,7 +33,11 @@
 has: a real project definition, pinned and audited dependencies, an SBOM, lint and security
 rules that match the Global Conventions, and the first tests this repo has ever had.
 
-**Closes:** F29, F30, F31, F32.
+**Closes:** F29, F31, F32. **⚠️ F30** (no project definition, no lint/security config, no
+tests) closes only in the narrow sense BR-D23 left: **pytest plus one index-schema contract
+test**. The `pyproject.toml`/hatch/ruff-five-rule-families programme is cut, so **F30 stays
+partly open by decision** — record that rather than ticking it. **F31 is fixed early in
+`MW-T3`** for `create_index.py`; `test_rag.py`'s copy still needs doing here.
 
 **Dependencies:** **S4-T4 must be merged first.** It rewrites `create_index.py` — removing
 the destructive delete and the `local-exec` coupling. Writing tests before that change means

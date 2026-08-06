@@ -35,7 +35,10 @@
 issue/label taxonomy with the Global Conventions. **No `.tf` file and no AWS resource is
 touched in this sprint.**
 
-**Closes:** F17 (Critical), F33, F34, F35, F36, F37, F38.
+**Closes:** F17 (Critical), F33, F34, F35, F36, F37, F38, **F54** (T5 — the `.gitignore`
+one-liner), and the **deletion half of F53** (new T7). The **budget** (new T8) closes no `F`
+finding: cost was never entered in the inventory, which is part of why it originally ranked
+ninth.
 
 **Dependencies:** None. S0 is the entry point — every later sprint's gates are advisory
 until F17 is closed.
@@ -49,9 +52,15 @@ GitHub forbids approving your own pull request. No task here grants any new AWS 
 **Risks & Blockers:**
 - Tasks 1, 2 and 3 change **live GitHub state** via `gh api`, not files. They are not
   revertible by `git revert`; each task below states its own undo command.
-- The `gh` token must carry `repo` and `admin:repo_hooks` scope. Verify with
-  `gh auth status` before starting; if the ruleset POST returns 403, stop and report — do
-  not retry with a broader token you minted yourself.
+- The `gh` token must carry **`repo` scope plus repo-admin permission**. Confirm with
+  `gh api repos/<owner>/<repo> --jq .permissions.admin` returning `true`. **If the ruleset
+  POST returns 403, stop and report — do not retry with a broader token you minted yourself.**
+  **⚠️ This bullet used to require `admin:repo_hooks`, which is the *webhooks* scope and is
+  irrelevant to the rulesets API.** Verified live 2026-08-05: the token's scopes are
+  `gist, read:org, repo, workflow` and `permissions.admin` is `true` — so a literal coder
+  checked for a scope that will never be present, **correctly** obeyed the don't-mint-a-broader-token
+  instruction, and halted the sprint at instruction one. The safety instruction was right; the
+  precondition it guarded was wrong.
 - Once Task 1 lands, **direct pushes to `main` stop working for the owner too.** That is the
   intent. Every subsequent sprint must go through a PR.
 
@@ -135,7 +144,7 @@ GitHub forbids approving your own pull request. No task here grants any new AWS 
 - **Task 3: Migrate the label and issue-template taxonomy**
   - **Description:** Bring labels onto the three orthogonal axes in
     `docs/hardening_roadmap.md` § 7, keeping the two documented local axes.
-    1. **Rename** (preserves existing assignments — use `gh label edit --name`, never
+    1. **Rename** (preserves existing assignments — use `gh label edit <old-name> --name <new-name>`, never
        delete-and-create): `type/bug`→`bug`, `type/feature`→`feature`,
        `type/docs`→`docs`, `type/security`→`security`, `type/access`→`chore`,
        `scope/iam`→`area/bootstrap`, `scope/pipeline`→`area/ci`,
@@ -145,7 +154,7 @@ GitHub forbids approving your own pull request. No task here grants any new AWS 
        (description: "applied by an automated writer — never by a human").
     3. **Delete** the labels naming infrastructure this repo does not have:
        `type/drift`, `type/sync-failure`, `env/prod`, `env/staging`, `env/dev`. Before
-       deleting each, run `gh issue list --label <name>` and re-label any hits onto the new
+       deleting each, run `gh issue list --state all --label <name>` and re-label any hits onto the new
        taxonomy; a delete that silently drops a label off an open issue is not acceptable.
     4. **Issue templates:** delete `.github/ISSUE_TEMPLATE/drift_sync.yml` (it asks for "the
        ArgoCD app, Flux Kustomization, or Helm Release" — none of which exist here). In the
@@ -285,7 +294,7 @@ survived review are folded into the tasks above.
   output. The undo command is recorded in Task 1.
 - *Task 3 deletes labels, which destroys information.* Mitigated by ordering: renames are
   done with `gh label edit` (assignments survive), and every delete is preceded by a
-  `gh issue list --label` sweep. The acceptance criterion "no open issue has zero labels"
+  `gh issue list --state all --label` sweep. The acceptance criterion "no open issue has zero labels"
   is what makes that checkable rather than promised.
 - *No new AWS permission is granted anywhere in S0.* Verified: no task touches `bootstrap/`,
   and `pr-title`/`ruleset-drift` declare `permissions: {}` and `contents: read`

@@ -39,7 +39,11 @@ sprints_dir: sprints
 threat_model: docs/hardening_roadmap.md
 
 decisions:
-  log: docs/hardening_roadmap.md   # BR-D1..BR-D19 are recorded there.
+  # BR-D1..BR-D24 are recorded there. KEEP THIS RANGE CURRENT: a skill told the log stops at
+  # D19 has no reason to look for BR-D20 (ephemerality is a design requirement AND the
+  # acceptance test), BR-D22 (native state encryption), BR-D23 (the proportionality reshape)
+  # or BR-D24 (the severity rule) -- the four late decisions that changed the most.
+  log: docs/hardening_roadmap.md
   prefix: BR-D
 
 backlog:
@@ -48,8 +52,9 @@ backlog:
   item_prefix: null
 
 # docs-consistency's audit set. README.md is deliberately ABSENT: it documents a flat
-# root-level layout (`bedrock.tf`, `iam.tf`, … at the repo root) that the S31 module
-# refactor retired, and a Titan v1 embedding model the code no longer uses. Auditing it
+# root-level layout (`bedrock.tf`, `iam.tf`, … at the repo root) that the module
+# refactor retired (PR #13 — there is no sprint "S31"; the earlier note here invented one),
+# and a Titan v1 embedding model the code no longer uses. Auditing it
 # today would re-report those known-stale claims (#8) on every pass. S6 rewrites it; the
 # same PR adds it to this list.
 load_bearing_docs:

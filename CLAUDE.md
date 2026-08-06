@@ -176,14 +176,32 @@ paste retrieved chunks or a model answer into an issue.
 The **green gate** — what must pass before a PR — is `gates.green` in `.ai/project.yml`, not
 restated here. The rest of the local toolchain:
 
-```bash
-./Invoke-Tofu.ps1 plan     # PowerShell helper: loads .env into the session, then runs tofu
+**Native `tofu` only.** The `Invoke-Tofu.ps1` wrapper was **deleted 2026-08-05** — it existed
+solely to load `environments/ai-lab/.env` into the session before shelling `tofu`, which
+OpenTofu and the AWS SDK already do natively through environment variables. A gitignored
+wrapper meant the one thing making local development work lived on a single machine, invisible
+to review, to CI, and to anything reproducible (**F49**). Do not reintroduce it, and do not
+write a new wrapper under another name.
+
+```powershell
 aws sso login --profile admin-sso
+
+# Set the same three values the wrapper used to inject. `TF_VAR_<name>` is OpenTofu's own
+# variable mechanism and `AWS_PROFILE` is the SDK's — no wrapper is involved in either.
+$env:AWS_PROFILE                     = 'admin-sso'   # bootstrap/providers.tf sets no profile (F49)
+$env:TF_VAR_aws_region               = '<region>'    # has a default; override only if needed
+$env:TF_VAR_data_source_bucket_name  = '<bucket>'    # no default — required
+
+tofu -chdir=environments/ai-lab plan
 ```
 
-`Invoke-Tofu.ps1` is **gitignored and therefore not reviewed** — it is a local convenience,
-not part of the delivery path. A real `plan`/`apply` needs SSO credentials and the S3
-backend; it does not run cleanly from a bare checkout by design.
+`environments/ai-lab/.env` stays as the **gitignored record of which values to set**, not as
+something a script sources. Those values are BR-D4 *restricted* — a bucket name and a region on
+a public repo are free reconnaissance — so they belong in the shell or a repository variable,
+never in a committed `.tf` or `.tfvars`.
+
+A real `plan`/`apply` needs SSO credentials and the S3 backend; it does not run cleanly from a
+bare checkout by design.
 
 ## Pointers (load on demand)
 

@@ -15,9 +15,6 @@ __pycache__/
 *.pyc
 venv/
 
-# Local helper scripts
-Invoke-Tofu.ps1
-
 # way-of-working dev-workflow state.
 # `.ai/next-steps.md` and `.ai/project.yml` ARE tracked -- they are the shared cursor and
 # the plugin contract. These two are per-machine session state, not shared record.

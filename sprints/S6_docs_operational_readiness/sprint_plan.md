@@ -57,7 +57,12 @@ as real values, including in a copied-and-pasted error message.
     section — OpenSearch Serverless bills OCU-hours whether or not anyone queries, and the
     current README's teardown instructions no longer match the layout.
     Remove the `.env`-loading PowerShell snippet: it splits on `=` and breaks on any value
-    containing one, and `Invoke-Tofu.ps1` already does it correctly.
+    containing one. **Do not replace it with another wrapper.** `Invoke-Tofu.ps1`, which used to
+    do the same job less badly, was **deleted 2026-08-05** — document the native invocation
+    instead (`$env:AWS_PROFILE`, `TF_VAR_*`, then plain `tofu`), exactly as `CLAUDE.md`
+    § Commands now does. **And state the `AWS_PROFILE` export explicitly** — with the wrapper
+    gone, this README and the break-glass runbook are the only places F49's setup step is
+    written down.
   - **Target Files:** `README.md`
   - **Acceptance Criteria:** Every file path named in the README exists — verify each. No
     reference to Titan v1, to Infisical, or to a root-level `.tf` file. No 12-digit number, no

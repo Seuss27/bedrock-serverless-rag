@@ -47,9 +47,11 @@ Against a written list, from the review comment on PR #18 (`gh pr view 18 --comm
 - **S0's token prerequisite names `admin:repo_hooks`** — that is the *webhooks* scope. A literal
   coder stops at instruction one.
 - **`[M2]` items 3 and 7 — two direct file edits, not doc fixes.** `.claude/settings.json`'s deny
-  list fails open on `tofu state`/`import`/`init -migrate-state`, on `Invoke-Tofu.ps1` (the local
-  idiom `CLAUDE.md` documents), and on `gh api -X DELETE`; **verify the `PowerShell(...)` entries
-  are a real tool name or delete them — a placebo control is worse than a known gap.**
+  list fails open on `tofu state`/`import`/`init -migrate-state` and on `gh api -X DELETE`;
+  **verify the `PowerShell(...)` entries are a real tool name or delete them — a placebo control
+  is worse than a known gap.** *(The `Invoke-Tofu.ps1` gap in that item is **already closed** —
+  the wrapper was deleted 2026-08-05, which removes the subprocess surface rather than adding a
+  deny rule for it. Do not add `Bash(*Invoke-Tofu*)`; there is nothing to deny.)*
   `.gitignore` needs F54's one-liner plus `tfplan`, `plan.json`, `.venv/`.
 - **`CLAUDE.md`'s Actions rules are missing four** (`[M2]` § 4), and one of them is what makes F3
   a code-execution bug rather than a least-privilege smell: *a `pull_request`-triggered job runs

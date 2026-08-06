@@ -28,34 +28,50 @@ The planning-review gate is **closed** — the human signed off on a reshaped ST
 - **T2a′ done** — `path = "/bedrock-rag/"` on the module's role, so **MW** rebuilds at the
   right path and it is not replaced twice. The `permissions_boundary` half moved to S2.
 
-**`ST-T2′` is prepared.** Upstream PR **`glunk-works/global-bootstrap#5`** deletes the
-`bedrock-serverless-rag` entry from `var.projects` along with `bedrock_rag_policy` and its
-attachment; `tofu validate` and `tofu fmt -check -recursive` pass upstream. The org-wide F41
-issue is filed as **`glunk-works/global-bootstrap#6`** and linked from roadmap § 9.4.
+**`ST-T2′` is COMPLETE and verified.** Upstream PR **`glunk-works/global-bootstrap#5`** merged
+**2026-08-06T15:42:55Z** and was applied by a human. Verified against **live AWS, not the
+merged HCL**: `aws iam get-role --role-name github-actions-bedrock-serverless-rag` returns
+**`NoSuchEntity`**. **F45 is closed by removal.** The org-wide F41 issue is filed as
+**`glunk-works/global-bootstrap#6`** and linked from roadmap § 9.4.
+
+**F48's blocker is cleared** — `bootstrap/terraform.tfstate` and its `.backup` are copied
+out-of-band. That was the last thing standing between here and T3.
 
 ## Next
 
-**A human merges and applies `glunk-works/global-bootstrap#5`** (admin SSO, never CI —
-BR-D1). Then verify against **live AWS**, not the merged HCL:
+**`ST-T3` — widen → transfer → narrow.** Nothing blocks it. **Model: `opus` (architect).**
 
-```
-aws iam get-role --role-name github-actions-bedrock-serverless-rag   # must be NoSuchEntity
-```
+⚠️ **Do not start T3 without the runway to finish it.** The narrow is a blocking acceptance
+criterion that must land in the **same working session as the transfer** — see the gate below.
 
-Record the applied timestamp in ST's PR body. **Only then does `ST-T3` start.**
-**Model: `opus` (architect).**
+The three steps, in order, never combined:
+
+1. **Widen** (human apply, `bootstrap/`) — add the new owner as a *second* value on the single
+   `…:sub` key in `bootstrap/oidc-setup.tf`. **A list value, not two `StringLike` blocks** —
+   the latter is a duplicate-key error. Keep the existing `Seuss27` entry; do not edit it.
+   Then verify CI still authenticates **on the old owner**.
+2. **Transfer** — Settings → Danger Zone → Transfer, target `glunk-works`. **Human only**, and
+   irreversible in practice.
+3. **Verify, then narrow** (second human apply) — once a PR run *and* a merge-to-`main` run
+   have both authenticated under `glunk-works/…`, remove the old-owner entry.
+
+**Re-run `tofu plan` in `bootstrap/` immediately before each apply** — not once at the start.
+That root has no CI and no review, so drift can reappear between steps.
 
 ## Open gates and blockers
 
-**HITL Gate: OPEN.** The next action is human-only. Three remain, in order:
+**HITL Gate: OPEN.** T3's first action is a human `tofu apply`. Two human-only acts remain:
 
-1. **merge + `tofu apply`** of `global-bootstrap#5`;
-2. **T3's two `bootstrap/` applies (widen, then narrow)** — **blocked on F48**: an
-   off-workstation, verified-restorable copy of `bootstrap/terraform.tfstate` **does not yet
-   exist**, and that file is the only record of the org-shared OIDC provider;
-3. **the transfer itself** — a Settings UI action, irreversible in practice.
+1. **T3's two `bootstrap/` applies** (widen, then narrow) — admin SSO, never CI (BR-D1);
+2. **the transfer itself** — a Settings UI action, irreversible in practice.
 
-An agent may prepare files and draft commands for all three; it may execute none of them.
+An agent may prepare files and draft commands for both; it may execute neither.
+
+⚠️ **The narrow must complete in the same working session as the transfer.** Everything works
+without it and nothing gates it, so by default it slips — and the reason it matters is that
+**GitHub usernames are reclaimable**. Until it lands, a trust policy with a dangling
+`repo:Seuss27/bedrock-serverless-rag:*` glob stands against a role holding `iam:CreateRole`
+on `*` in the shared account.
 
 ⚠️ **T3's narrow must complete in the same session as the transfer.** GitHub usernames are
 reclaimable, so the widen leaves a dangling-subject trust policy standing until it does.

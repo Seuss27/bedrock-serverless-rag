@@ -29,6 +29,9 @@ independently verified. Not yet archived.**
   admin-scoped credential — not done without a separate decision).
 - Private vulnerability reporting was off while `SECURITY.md` told reporters to use it —
   enabled live.
+- **`BUDGET_NOTIFICATION_EMAIL` repo secret is now set** — `deploy-ai-lab.yml`'s plan step
+  can resolve `TF_VAR_budget_notification_email`; the budget is ready to apply next time
+  `environments/ai-lab` is applied. No live `tofu apply` has run yet.
 
 ## Next
 
@@ -46,13 +49,6 @@ dormant over-privileged role (F45) the instant the owner name in the OIDC subjec
 
 **HITL Gate: NONE OPEN for S0.** ST's three human-apply gates are the next ones, each hit
 in its own task.
-
-## Separately open (not sprint-blocking)
-
-`BUDGET_NOTIFICATION_EMAIL` repo secret is unset — `deploy-ai-lab.yml`'s plan step fails on
-any PR touching `environments/ai-lab/**` until a human runs
-`gh secret set BUDGET_NOTIFICATION_EMAIL` with a real address. No required check covers
-that job, so this doesn't block merges, but the budget can't actually apply until it's set.
 
 ## Pointers
 

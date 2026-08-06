@@ -61,9 +61,14 @@ jobs:
       run:
         working-directory: environments/ai-lab
     env:
-        # This tells GitHub: "Take the value of your stored variable 
+        # This tells GitHub: "Take the value of your stored variable
         # and give it to OpenTofu as TF_VAR_data_source_bucket_name"
         TF_VAR_data_source_bucket_name: ${{ vars.DATA_SOURCE_BUCKET_NAME }}
+        # PII (BR-D4), so this rides a secret, not a variable -- a repo `vars.*` value
+        # renders in cleartext anywhere it's echoed. Requires the BUDGET_NOTIFICATION_EMAIL
+        # repository secret to be set (S0-T8); until then this job's plan step fails on
+        # "No value for required variable", same as any other missing required input.
+        TF_VAR_budget_notification_email: ${{ secrets.BUDGET_NOTIFICATION_EMAIL }}
     steps:
       - uses: actions/checkout@v4
       

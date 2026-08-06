@@ -1,7 +1,6 @@
 name: 🔐 Access / IAM Request
 description: Request a new service account, RBAC change, or secret rotation.
-title: "[Global] IAM: Grant <role> to <entity>"
-labels: ["type/access", "status/triage"]
+labels: ["chore", "status/triage"]
 body:
   - type: input
     id: entity
@@ -14,6 +13,8 @@ body:
     id: permissions
     attributes:
       label: Requested Permissions
-      description: Specify the exact roles, namespaces, or resources needed.
+      description: >-
+        Specify the exact roles, namespaces, or resources needed. This repo is public --
+        do not paste the account id or a full role ARN; name the role/resource instead.
     validations:
       required: true

@@ -1,0 +1,99 @@
+name: Ruleset drift
+
+# Ported from glunk-works/bounty-infra's ruleset-drift.yml (CLAUDE.md: read the sibling
+# repo's workflows before designing a governance/CI pattern here). Every "required" check
+# in this repo blocks a merge only because the `protected-integration-branches` ruleset
+# (S0-T1) says so. This workflow re-reads the effective rules on `main` on a schedule
+# (plus workflow_dispatch, since a cron-only trigger cannot be tested without waiting for
+# the cron) and fails loudly the moment they no longer match what S0 put in place.
+#
+# Deliberately NOT a required check and NOT a job in deploy-ai-lab.yml: a required check is
+# required only because the ruleset says so, so making this check itself required would
+# un-require it at the instant the ruleset it watches is deleted -- silently, on the exact
+# failure it exists to catch. It gates nothing here and is gated by nothing.
+#
+# KNOWN GAP: this does not (and cannot, with GITHUB_TOKEN) detect a non-empty
+# `bypass_actors` list. `repos/{repo}/rules/branches/main` is a per-branch EVALUATION view
+# and does not surface bypass actors at all -- seeing them needs `repos/{repo}/rulesets/{id}`,
+# which needs `administration: read`, a permission `GITHUB_TOKEN` cannot be granted. Closing
+# this gap means minting a new credential (a PAT or app installation), which is a deliberate
+# decision to make explicitly, not slip in here -- see the sprint plan's own instruction not
+# to reach for a broader token to route around a permission wall.
+
+on:
+  schedule:
+    - cron: "23 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ruleset-drift:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify the protected-integration-branches ruleset still holds
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          rules=$(gh api "repos/${REPO}/rules/branches/main")
+
+          missing_types=()
+          for t in deletion non_fast_forward pull_request required_status_checks; do
+            if ! jq -e --arg t "$t" 'any(.[]; .type == $t)' <<<"$rules" >/dev/null; then
+              missing_types+=("$t")
+            fi
+          done
+
+          contexts=$(jq -c '
+            [.[] | select(.type == "required_status_checks")
+                 | .parameters.required_status_checks[].context]
+          ' <<<"$rules")
+
+          # This list mirrors .ai/project.yml's ruleset.required_checks. It is `pr-title`
+          # only for now (S0-T4); every later sprint that appends a required check updates
+          # this list, and .ai/project.yml, in the SAME pull request.
+          missing_checks=()
+          for c in pr-title; do
+            if ! jq -e --arg c "$c" 'index($c) != null' <<<"$contexts" >/dev/null; then
+              missing_checks+=("$c")
+            fi
+          done
+
+          # Beyond presence, the PARAMETERS of the two configurable rule types must still
+          # match Task 1's payload -- a type that still exists but has been loosened (e.g.
+          # `strict_required_status_checks_policy` flipped off, or stale-review dismissal
+          # turned off) is drift too, and both values are already in `$rules` at no extra
+          # API cost.
+          weakened=()
+          pr_params=$(jq -c '[.[] | select(.type == "pull_request") | .parameters][0] // {}' <<<"$rules")
+          if [ "$(jq -r '.dismiss_stale_reviews_on_push' <<<"$pr_params")" != "true" ]; then
+            weakened+=("pull_request.dismiss_stale_reviews_on_push != true")
+          fi
+          if [ "$(jq -r '.required_approving_review_count' <<<"$pr_params")" != "0" ]; then
+            weakened+=("pull_request.required_approving_review_count != 0")
+          fi
+          rsc_params=$(jq -c '[.[] | select(.type == "required_status_checks") | .parameters][0] // {}' <<<"$rules")
+          if [ "$(jq -r '.strict_required_status_checks_policy' <<<"$rsc_params")" != "true" ]; then
+            weakened+=("required_status_checks.strict_required_status_checks_policy != true")
+          fi
+
+          if [ ${#missing_types[@]} -gt 0 ] || [ ${#missing_checks[@]} -gt 0 ] || [ ${#weakened[@]} -gt 0 ]; then
+            echo "::error::Branch protection on 'main' has been weakened or removed."
+            if [ ${#missing_types[@]} -gt 0 ]; then
+              echo "::error::Missing rule types: ${missing_types[*]}"
+            fi
+            if [ ${#missing_checks[@]} -gt 0 ]; then
+              echo "::error::Missing required checks: ${missing_checks[*]}"
+            fi
+            if [ ${#weakened[@]} -gt 0 ]; then
+              echo "::error::Weakened parameters: ${weakened[*]}"
+            fi
+            echo "::error::See docs/hardening_roadmap.md and sprints/S0_governance_baseline/sprint_plan.md (T1) -- this ruleset is what makes every other CI check in this repo actually block a merge; restore it in Settings > Rules."
+            exit 1
+          fi
+
+          echo "OK: ruleset intact -- 4 rule types, 1 required check, parameters match. (bypass_actors NOT checked -- see file header.)"

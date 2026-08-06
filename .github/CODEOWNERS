@@ -1,0 +1,7 @@
+# Default owner for everything in the repo.
+* @Seuss27
+
+# Called out explicitly so these two stay visible as high-consequence directories even
+# after ownership widens beyond a solo maintainer.
+/bootstrap/ @Seuss27
+/.github/workflows/ @Seuss27

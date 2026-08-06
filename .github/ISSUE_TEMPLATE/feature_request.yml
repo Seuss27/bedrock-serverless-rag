@@ -1,16 +1,14 @@
 name: ✨ Infrastructure Request
 description: Request new cloud resources, namespaces, or architecture changes.
-title: "[Env] Component: Brief description of requested resource"
-labels: ["type/feature", "status/triage"]
+labels: ["feature", "status/triage"]
 body:
   - type: dropdown
     id: environment
     attributes:
       label: Target Environment
       options:
-        - Production
-        - Staging
-        - Development
+        - ai-lab
+        - global
     validations:
       required: true
   - type: textarea

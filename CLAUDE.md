@@ -38,9 +38,14 @@ Three OpenTofu roots, and the distinction matters for every change:
 > **SD the devcontainer is DEFERRED**, not parallel), and the locked decisions
 > (**BR-D1..BR-D24**). It is also the **threat model**.
 >
-> Three facts shape every judgement call here. **This repo is PUBLIC.** **As of 2026-08-05
-> `main` has no branch protection and CI applies to AWS with no human approval** — until S0
-> and S1 land, assume nothing in `.github/workflows/` is blocking anything. And **the
+> Three facts shape every judgement call here. **This repo is PUBLIC.** **`main` IS protected
+> and CI still applies to AWS with no human approval** — S0 landed on 2026-08-05, so the
+> `protected-integration-branches` ruleset is live and `pr-title` is a required check that
+> genuinely blocks a merge; do not assume otherwise. **S1 has not landed**, so the
+> `-auto-approve` path in `deploy-ai-lab.yml` is still ungated — that half is unchanged.
+> *(Until 2026-08-06 this paragraph read "`main` has no branch protection … assume nothing in
+> `.github/workflows/` is blocking anything." Both halves were once true; only the second
+> still is.)* And **the
 > committed IaC does not describe the deployed system**: the resources exist in AWS but are
 > absent from the state CI reads, and **no CI apply has ever succeeded** (F39, confirmed from
 > run `26788807269`). Treat `tofu plan` output as unverified until **`MW`** reconciles state —
@@ -58,9 +63,14 @@ paths, and the paths to the deep record. Read `.ai/project.yml` at the start of 
 never copy its values into this file, and never shadow a plugin skill with a local copy of
 the same name. Both rules, and why, are in the plugin's `reference/project-schema.md`.
 
-Two of its values are **`null` on purpose today** and a skill must take the no-gate branch
-rather than invent one: `ruleset` (no branch protection exists yet — S0) and
-`review.ci_gate` (no `architect-review` check — BR-D14).
+**One** of its values is **`null` on purpose today**, and a skill must take the no-gate branch
+rather than invent one: `review.ci_gate` (no `architect-review` check — BR-D14).
+
+⚠️ **`ruleset` is NOT null — read it, do not assume it.** It is populated with the live
+`protected-integration-branches` values (four rule types, `required_checks: [pr-title]`). This
+paragraph asserted the opposite until 2026-08-06, which is worse than a stale fact: it is the
+one sentence here that routes a plugin skill down a branch, so it told every skill to behave as
+if no gate existed on a repo that has one.
 
 ## Local: OpenTofu
 
@@ -180,9 +190,12 @@ precious" is true of this lab and false of the account it runs in.
 - **Restricted but not secret** — account id, role ARNs, bucket names, the collection
   endpoint — are **not** secrets and do not belong in a secret store. They go in GitHub
   Actions *variables* and tofu variables, and never in a workflow log (BR-D4).
-- **Infisical is being removed** (S3-T8). The provider, data source and variable are dead
-  commented-out code; the README still tells readers to provision a machine identity for it.
-  Do not revive either. This repo holds **no secrets** today — that is why the pattern is
+- **Infisical is GONE** — deleted in **S0** (PR #20), not merely commented out, and
+  `grep -rni infisical` over `modules/`, `environments/`, `bootstrap/` and `.github/` returns
+  nothing. *(This bullet said "being removed (S3-T8) … dead commented-out code" until
+  2026-08-06; the removal moved earlier and `S3-T8` no longer exists.)* The **README still**
+  tells readers to provision a machine identity for it — that is stale README text, tracked as
+  #8. Do not revive either. This repo holds **no secrets** today — that is why the pattern is
   being set now, before the first one exists.
 
 ## Local: what must not be committed
@@ -210,11 +223,13 @@ write a new wrapper under another name.
 ```powershell
 aws sso login --profile admin-sso
 
-# Set the same three values the wrapper used to inject. `TF_VAR_<name>` is OpenTofu's own
-# variable mechanism and `AWS_PROFILE` is the SDK's — no wrapper is involved in either.
-$env:AWS_PROFILE                     = 'admin-sso'   # bootstrap/providers.tf sets no profile (F49)
-$env:TF_VAR_aws_region               = '<region>'    # has a default; override only if needed
-$env:TF_VAR_data_source_bucket_name  = '<bucket>'    # no default — required
+# `TF_VAR_<name>` is OpenTofu's own variable mechanism and `AWS_PROFILE` is the SDK's — no
+# wrapper is involved in either. The first three are what the wrapper used to inject; the
+# fourth arrived with S0's `budget.tf` and is just as required.
+$env:AWS_PROFILE                      = 'admin-sso'   # bootstrap/providers.tf sets no profile (F49)
+$env:TF_VAR_aws_region                = '<region>'    # has a default; override only if needed
+$env:TF_VAR_data_source_bucket_name   = '<bucket>'    # no default — required
+$env:TF_VAR_budget_notification_email = '<email>'     # no default — required; PII, never commit it
 
 tofu -chdir=environments/ai-lab plan
 ```

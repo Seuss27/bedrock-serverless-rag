@@ -70,9 +70,13 @@ admin-capable apply until S2 lands.
   - **What still works, and why — this is the load-bearing part.** Adding
     `environment: production` to the apply job changes its OIDC subject to
     `repo:…:environment:production` (the Environment takes precedence over the branch ref).
-    This repo's **own** `github-actions-deploy-role` trusts
-    `StringLike "repo:${var.github_repo_path}:*"` — a **glob**, which matches that subject just
-    as it matches every other. So the gated apply **does** authenticate, on the local role.
+    This repo's **own** `github-actions-deploy-role` trusts, via `StringLike`, every entry in
+    `var.github_oidc_subject_prefixes` rendered as `"${prefix}:*"` — a **glob**, which matches
+    that subject just as it matches every other. So the gated apply **does** authenticate, on
+    the local role. *(The variable was `var.github_repo_path` until **ST-T3** replaced it; the
+    conclusion is unchanged, since every prefix still ends `:*`. But note the prefixes are now
+    **ID-qualified** — `repo:<owner>@<org_id>/<repo>@<repo_id>` — so an `environment:production`
+    subject must be reasoned about in that form, not the plain one.)*
     ⚠️ **S1 therefore depends on F2 — a finding — remaining open.** That is not a reason to
     close F2 early, and it is not a reason to relax about it: it means the sprint that narrows
     the trust policy to enumerated subjects (**S2**) must add `environment:production` in the

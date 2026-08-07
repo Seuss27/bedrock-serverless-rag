@@ -98,7 +98,7 @@ resource "aws_iam_role_policy" "bedrock_kb_s3_policy" {
 resource "aws_opensearchserverless_access_policy" "data_access_policy" {
   name        = "personal-rag-data-access"
   type        = "data"
-  description = "Allow Bedrock and local admin to access collection data plane"
+  description = "Allow the KB execution role and the granted data-plane principals to access collection data"
 
   policy = jsonencode([
     {
@@ -126,17 +126,13 @@ resource "aws_opensearchserverless_access_policy" "data_access_policy" {
           ]
         }
       ]
-      Principal = [
-        aws_iam_role.bedrock_kb_role.arn,
-        data.aws_arn.current_identity.arn
-      ]
+      Principal = distinct(concat(
+        [aws_iam_role.bedrock_kb_role.arn],
+        var.data_plane_principal_arns
+      ))
     }
   ])
 }
 
-# Helper data blocks to fetch your active AWS account context dynamically
+# Helper data block to fetch your active AWS account context dynamically
 data "aws_caller_identity" "current" {}
-
-data "aws_arn" "current_identity" {
-  arn = data.aws_caller_identity.current.arn
-}

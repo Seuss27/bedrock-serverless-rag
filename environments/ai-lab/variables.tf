@@ -9,6 +9,25 @@ variable "data_source_bucket_name" {
   description = "The name of the S3 bucket where Bedrock RAG source documents are stored"
 }
 
+variable "data_plane_principal_arns" {
+  type        = list(string)
+  description = <<-EOT
+    IAM role ARNs granted data-plane access to the AOSS collection, in addition to the KB
+    execution role: this repo's own github-actions-deploy-role and the human operator's SSO
+    role. Restricted, not secret (BR-D4) -- source via TF_VAR_data_plane_principal_arns
+    locally and a repository variable in CI, never a committed .tfvars. No default on
+    purpose: an unset OR empty value must fail plan rather than silently reproduce F5.
+    TF_VAR_data_plane_principal_arns must be an HCL list literal, e.g.
+    '["arn:aws:iam::<acct>:role/a","arn:aws:iam::<acct>:role/b"]' -- a comma-separated
+    string is not accepted.
+  EOT
+  nullable    = false
+  validation {
+    condition     = length(var.data_plane_principal_arns) > 0
+    error_message = "At least one data-plane principal ARN is required -- an empty list silently reproduces F5 (the CI role loses AOSS data-plane access)."
+  }
+}
+
 variable "budget_limit_usd" {
   type        = string
   description = "Monthly cost guardrail for the ai-lab environment, in USD."

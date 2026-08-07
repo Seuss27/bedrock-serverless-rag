@@ -13,9 +13,32 @@ plan of a fiction.**
 
 **Closes:** **F51**, F39, F5, F46, **F55**.
 
-**Dependencies:** **ST must be complete** — the transfer is done, CI authenticates from
-`glunk-works/…`, and the corrected upstream policy is applied. **ST-T2c must have passed**
-(see the blocking gate below). S1 has **not** run, and that is deliberate.
+> ### 📥 F55 is re-homed HERE, and re-pointed — recorded 2026-08-06, confirmed 2026-08-07 by ST-T5
+>
+> **F55 arrived from ST** with the 2026-08-06 reshape and lives in this sprint as the blocking
+> **Task 0**. It was not merely moved, it was **re-pointed**: with `ST-T2′` deleting the
+> upstream role, the identity whose sufficiency is in question is **this repo's own
+> `github-actions-deploy-role`**, so F55 now targets `aws_iam_role_policy.state_access_policy`
+> in **`bootstrap/state-backend.tf`** — a file in this repository. All four gaps re-verified
+> present against that policy on 2026-08-06: no `aoss:*AccessPolicy`, no `iam:PassRole`, no
+> `s3:GetBucket*`, no `s3:PutEncryptionConfiguration`.
+
+**Dependencies:** **✅ ST is COMPLETE** (2026-08-07) — the transfer is done and CI authenticates
+from `glunk-works/…` in real runs.
+
+> **⚠️ Two dependencies this line used to carry are GONE, and both would stall the sprint if
+> read literally** *(corrected 2026-08-07 by ST-T5)*:
+>
+> - ~~"and the corrected upstream policy is applied"~~ — **there is no corrected upstream
+>   policy and there will not be one until S2-T0.** `ST-T2′` closed **F45** by *deleting* the
+>   `bedrock-serverless-rag` entry, not by correcting it. Waiting on this condition means
+>   waiting for something nobody will ever do; treating it as satisfied means adopting a role
+>   that returns `NoSuchEntity`. **Neither. It does not apply.** See Task 0's struck option 1.
+> - ~~"**ST-T2c** must have passed"~~ — **ST-T2c *is* this sprint's Task 0.** It moved here in
+>   the same reshape, so this dependency pointed at a task that no longer exists in ST. The
+>   gate it names is real and is enforced below; it is simply internal to this sprint now.
+
+S1 has **not** run, and that is deliberate.
 
 ---
 
@@ -181,8 +204,20 @@ one.**
     }
     ```
     `Principal` becomes `concat([aws_iam_role.bedrock_kb_role.arn], var.data_plane_principal_arns)`,
-    and `environments/ai-lab` passes **the upstream apply role** and the human operator's SSO
-    role. Both are BR-D4 *restricted*: source them from `.env` locally and a repository variable
+    and `environments/ai-lab` passes ~~**the upstream apply role**~~ **this repo's own
+    `github-actions-deploy-role`** and the human operator's SSO role.
+    > **⚠️ Corrected 2026-08-07 (ST-T5).** This said *the upstream apply role*, written when ST
+    > was going to hand CI over to `github-actions-bedrock-serverless-rag`. **That role does not
+    > exist** — `ST-T2′` deleted it, and `S2-T0` re-creates it two sprints from here. Passing an
+    > ARN read from `global-bootstrap`'s `github_actions_role_arns` output yields an **empty
+    > string**, which the `validation` block above rejects at plan time — a good failure, but a
+    > confusing one if you are looking for a typo. **Pass the role CI actually assumes**, i.e.
+    > the one `vars.AWS_OIDC_ROLE_ARN` names today. **S2-T2 must re-point this list when it
+    > switches over** — the data-plane grant does not follow the identity automatically, and a
+    > forgotten entry here reproduces **F5** exactly: a `403` from `create_index.py` naming
+    > nothing useful.
+
+    Both are BR-D4 *restricted*: source them from `.env` locally and a repository variable
     in CI, **never** a committed `.tfvars`.
   - **Target Files:** `modules/aws-bedrock-rag/iam.tf`, `modules/aws-bedrock-rag/variables.tf`,
     `environments/ai-lab/main.tf`, `environments/ai-lab/variables.tf`
@@ -243,11 +278,15 @@ scripts at once).
   acceptance criterion makes the operator *state* that the OIDC provider was untouched rather
   than merely not mention it, because a silent omission and a careful check look identical in a
   PR body.
-- **Option 2 of Task 0 widens a role this sprint does not delete.** If the "widen first" path is
-  taken, `state_access_policy` gains `iam:PassRole` and lives on until S2-T2 — so the widening
-  must be recorded as temporary, with S2-T2 named as its removal, or it becomes permanent by
-  forgetting. Option 1 avoids this entirely and is preferred where S2's switchover can be pulled
-  forward cleanly.
+- **Option 2 of Task 0 widens a role this sprint does not delete.** `state_access_policy` gains
+  `iam:PassRole` and lives on until S2-T2 — so the widening **must** be recorded as temporary,
+  with S2-T2 named as its removal, or it becomes permanent by forgetting. ⚠️ **This is now the
+  only path, so the mitigation is the only mitigation** *(corrected 2026-08-07 by ST-T5; this
+  bullet used to end "Option 1 avoids this entirely and is preferred where S2's switchover can
+  be pulled forward cleanly", which contradicts the blocking gate above — option 1 was struck
+  on 2026-08-06 because `ST-T2′` deleted the role it adopts)*. Write the removal into S2-T2's
+  step 3 in the same PR that widens, not afterwards: a temporary grant whose removal is
+  recorded only in a PR body is a permanent grant with a good story.
 
 **Logic**
 

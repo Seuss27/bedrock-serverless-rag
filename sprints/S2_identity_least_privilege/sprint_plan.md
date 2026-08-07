@@ -35,6 +35,17 @@
 > **`ST` Task 2b is the NORMATIVE specification for Task 0** — it is retained verbatim in
 > `sprints/ST_org_transfer/sprint_plan.md`. Read it there. Its entire purpose is to stop this
 > sprint re-adding the original, escapable construction.
+>
+> ✅ **Re-homing CONFIRMED 2026-08-07 by ST-T5**, which is a real check and not a formality: ST's
+> Definition of Done requires every re-homed finding to appear in its **destination** plan, on
+> the principle that a finding moved out of a sprint and not written into where it landed is a
+> finding **dropped**. All three are present below in **Task 0** — F56 at step 3, F58 at step 4,
+> F57's boundary half in the "also in this sprint, not upstream" bullet.
+>
+> ⚠️ **One thing ST changed that is easy to read as a relief and is not.** After `ST-T2′` this
+> project has **no upstream role, no plan role, and no findings `Deny`** — a *smaller surface*,
+> not a *hardened* one. Nothing was secured; something was removed. Task 0 re-creates all three
+> at once, which is the moment every one of these findings re-arms simultaneously.
 
 **Sprint Goal:** This repo ends the sprint owning its **workload and nothing else**. No OIDC
 provider, no CI role, no state bucket — and state confidentiality that does not depend on who
@@ -155,10 +166,21 @@ identity mistake does not fail locally, while a workload mistake costs an apply.
   - *(The `adopt → verify → delete` discipline below is unchanged and is exactly right — note
     that Task 0 lengthens the window in which both roles exist, which is the window this
     discipline exists to make safe.)*
-  - **Description:** ST-T2 already added `plan_role = true` and
+  - **Description:** ~~ST-T2 already added `plan_role = true` and
     `extra_oidc_subjects = ["environment:production"]` upstream and replaced
-    `bedrock_rag_policy` with a boundary-constrained one. This task **switches over and
-    cleans up**, in that order:
+    `bedrock_rag_policy` with a boundary-constrained one.~~
+    > **⚠️ That sentence is FALSE and was the most dangerous line in this plan** *(struck
+    > 2026-08-07 by ST-T5)*. **ST added nothing upstream — it deleted.** `plan_role`, the
+    > `environment:production` subject, and a boundary-constrained workload policy are all
+    > **Task 0's deliverables**, not inherited state. A coder reading the struck sentence
+    > proceeds straight to step 1, finds `github_actions_role_arns` has no entry for this
+    > project, and "fixes" it by re-adding the upstream entry inline **without** the boundary —
+    > reopening **F41** in the sprint whose entire purpose is closing that class of finding.
+    > The banner at the top of this file says so; this body contradicted it, and **a task body
+    > wins over a banner for anyone who scrolls straight to their task.**
+
+    **Task 0 must be merged AND human-applied before this task begins.** Then this task
+    **switches over and cleans up**, in that order:
     1. **Adopt.** Point `vars.AWS_OIDC_ROLE_ARN` at `github-actions-bedrock-serverless-rag`
        and `vars.AWS_PLAN_ROLE_ARN` at `github-actions-bedrock-serverless-rag-plan`, from
        `global-bootstrap`'s `github_actions_role_arns` / `github_actions_plan_role_arns`
@@ -210,8 +232,11 @@ identity mistake does not fail locally, while a workload mistake costs an apply.
     the upstream code does not use means the first `extra_oidc_subjects` entry containing a `*`
     globs silently. The `StringLike` → `StringEquals` change is filed with the F41 upstream
     issue (§ 9.4) and is a **precondition of closing F2**, not a nice-to-have. F3's half stands:
-    the plan role does exist as a separate read-only identity — subject to **F56**, which ST-T2
-    must have resolved.
+    the plan role does exist as a separate read-only identity — subject to **F56**, which
+    ~~ST-T2 must have resolved~~ **Task 0 of this sprint resolves** *(corrected 2026-08-07 by
+    ST-T5: `ST-T2′` deleted the project entry, so no plan role exists for this project at all
+    until Task 0 sets `plan_role = true` again — F56 is dormant, not fixed, and it re-arms in
+    that same change)*.
   - **Target Files:** `bootstrap/oidc-setup.tf`, `bootstrap/state-backend.tf`,
     `.github/workflows/deploy.yml`
   - **Acceptance Criteria:** `grep -rn 'iam:CreateRole\|iam:PutRolePolicy' bootstrap/`
@@ -266,8 +291,12 @@ identity mistake does not fail locally, while a workload mistake costs an apply.
        to **both roots** (`environments/ai-lab` and `bootstrap/`).
        **Why this and not SSE.** SSE-S3 protects the object at rest in S3 and nothing else — it
        does not protect state from anyone who can legitimately `s3:GetObject` it, and after
-       ST-T2 that set includes **a plan role assumable from any pull request**, whose state-read
-       policy grants exactly that on exactly this prefix. Client-side encryption closes it;
+       ~~ST-T2~~ **this sprint's Task 0** that set includes **a plan role assumable from any
+       pull request**, whose state-read policy grants exactly that on exactly this prefix.
+       *(Corrected 2026-08-07 by ST-T5 — the plan role arrives at Task 0, not in ST. **The
+       ordering this creates is intra-sprint and therefore easier to get wrong, not easier to
+       get right:** Task 0 mints the PR-assumable reader and Task 4 encrypts what it can read,
+       in the same sprint. Do not let Task 0 land far ahead of Task 4.)* Client-side encryption closes it;
        SSE-KMS would not have. This is also what makes the BR-D21 secrets pattern honest — a
        `data.aws_ssm_parameter` value **is in state** (§ 9.5), so the encryption block must land
        **before** any SSM canary runs anywhere.
@@ -340,11 +369,18 @@ logic error becomes an outage).
 
 **Security**
 
-- **The re-scope removed a control this sprint was going to add — say so plainly.** The
-  permissions boundary is no longer built *here*; it is built upstream in ST-T2. If ST-T2
-  ships a weaker policy than drafted, this sprint's adoption step inherits that weakness and
-  the roadmap will record F1 as closed. Task 2's acceptance criterion therefore checks the
-  *upstream* policy's shape, not merely that adoption happened.
+- ~~**The re-scope removed a control this sprint was going to add — say so plainly.** The
+  permissions boundary is no longer built *here*; it is built upstream in ST-T2.~~
+  **↩️ REVERSED 2026-08-07 (ST-T5): the boundary came BACK to this sprint, as Task 0.** ST
+  neither built it nor kept it — `ST-T2′` deleted the policy it would have constrained. So the
+  concern this bullet raised is inverted: the risk is no longer *inheriting a weak upstream
+  policy*, it is **writing a weak one here**, under the pressure of Task 2 being blocked behind
+  it. That is precisely the dynamic ST Task 2b warned about and precisely why the boundary was
+  moved to a sprint with **no irreversible act waiting on it**. The mitigation is unchanged in
+  form and now applies to our own work: **Task 2's acceptance criterion checks the boundary
+  policy's *shape* (Task 2b(4)'s allowlist grep), not merely that adoption happened** — and a
+  boundary that breaks every apply gets **removed rather than corrected**, so getting it right
+  matters more than getting it strict.
 - **Adopt-verify-delete, never delete-adopt.** Every retirement here removes something CI is
   currently using. Deleting the local role before the upstream one is proven working leaves
   the pipeline with no identity, in a shared account, mid-sprint. The ordering is stated in

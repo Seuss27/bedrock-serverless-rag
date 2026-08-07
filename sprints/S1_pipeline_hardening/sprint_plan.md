@@ -17,8 +17,16 @@
 >   destroyed with nobody on call, is the wrong trade.
 > - **⚠️ `tofu-plan-main` is blocked on F56 and must not be unblocked the obvious way.** The
 >   upstream plan role trusts **only** `repo:<org>/<repo>:pull_request`, so a `push`-triggered
->   job **can never assume it**. ST-T2 step 4 decides between adding an `extra_oidc_subjects`
->   equivalent upstream and dropping `tofu-plan-main` entirely. **Do not point it at
+>   job **can never assume it**. ~~ST-T2 step 4 decides~~ **S2-T0 decides** between adding an
+>   `extra_oidc_subjects` equivalent upstream and dropping `tofu-plan-main` entirely.
+>   > **⚠️ Corrected 2026-08-07 by ST-T5, and the correction matters more here than elsewhere.**
+>   > ST made no such decision: `ST-T2′` **deleted** this project's upstream entry, so **no plan
+>   > role exists for it at all** when S1 runs, and F56 does not arise until S2-T0 re-creates
+>   > one. This file's Risks section already said so at the "What is deferred, not broken"
+>   > bullet — but `CLAUDE.md` establishes that **the banner wins** over a task body, so the
+>   > repo's own precedence rule was selecting the *false* version. A banner that outranks the
+>   > text must be corrected first, not last.
+>   **Do not point it at
 >   `vars.AWS_OIDC_ROLE_ARN`** — that is an apply-capable role on push to `main` with no
 >   `environment:` gate, i.e. **F13 restored in the sprint that closes it**.
 > - **F13 is now rated High, not Critical** (BR-D24) — on double-counting alone. That is a
@@ -29,7 +37,9 @@ planned, and turn the advisory scanners into real gates. At the end of this spri
 infrastructure change reaches AWS only after a PR, a plan a human read, and an explicit
 Environment approval (BR-D2).
 
-**Closes:** F13 (Critical), F14, F15, F16, F18, F19, F20, F21.
+**Closes:** F13 (**High** — lowered from Critical by BR-D24 on double-counting; corrected here
+2026-08-07 to match the inventory and this file's own banner, and it is **not** a licence to
+deprioritise T5), F14, F15, F16, F18, F19, F20, F21.
 
 **Dependencies:** **S0 and ST must both be merged.** Without S0's ruleset everything below is
 advisory. **ST (the org transfer) must precede this sprint**: repository variables do not
@@ -48,10 +58,14 @@ the sprint's centrepiece: it is the only control standing between a merge and an
 admin-capable apply until S2 lands.
 
 **Risks & Blockers:**
-- **`vars.AWS_PLAN_ROLE_ARN` may not be set yet.** ST-T2 opts this project into
-  `plan_role = true` upstream, so the *role* exists once ST is applied — but the repository
-  **variable** pointing at it is set in **S2-T2**, which is also where the switch to the
-  upstream roles happens. Until then Task 4's plan job uses the
+- **`vars.AWS_PLAN_ROLE_ARN` does not exist, and neither does the role it would name.**
+  ~~ST-T2 opts this project into `plan_role = true` upstream, so the *role* exists once ST is
+  applied~~ — **false; corrected 2026-08-07 by ST-T5.** `ST-T2′` **deleted** this project's
+  upstream entry, so after ST there is **no upstream role and no plan role for this project**;
+  **S2-T0** re-creates both, two sprints after this one, and **S2-T2** sets the repository
+  variable and switches over. *(This bullet contradicted the "Cross-repo dependency" bullet
+  below it, which was corrected in the 2026-08-06 reshape while this one was missed.)*
+  Until then Task 4's plan job uses the
   `vars.AWS_PLAN_ROLE_ARN || vars.AWS_OIDC_ROLE_ARN` fallback with a `# S2-T2: drop the
   fallback` marker. **Do not invent a role ARN**, and do not create a role from this sprint —
   `bootstrap/` is out of scope here (BR-D1).

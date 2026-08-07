@@ -105,11 +105,21 @@ if no gate existed on a repo that has one.
   the rule the rest of this section depends on, and it is why **F3** ("one role for plan and
   apply") is not a least-privilege smell but **arbitrary command execution with
   account-admin-capable credentials**. `deploy-ai-lab.yml` runs on `pull_request` and assumes
-  `vars.AWS_OIDC_ROLE_ARN`, whose live trust is `StringLike repo:<owner>/<repo>:*` — which
-  admits `:pull_request`. So **anyone who can push a branch can edit the `run:` block and get
-  `iam:CreateRole` on `*`** in the account holding bounty-infra's findings archive. Any change
-  that gives a `pull_request` job a credential is a change to who can execute code as that
-  credential.
+  `vars.AWS_OIDC_ROLE_ARN`, whose live trust is `StringLike` over
+  `repo:<owner>@<org_id>/<repo>@<repo_id>:*` — which **still admits `:pull_request`**. So
+  **anyone who can push a branch can edit the `run:` block and get `iam:CreateRole` on `*`** in
+  the account holding bounty-infra's findings archive. Any change that gives a `pull_request`
+  job a credential is a change to who can execute code as that credential.
+  > **Two corrections, 2026-08-07, and the second one is the trap.** *(a)* The subject was
+  > `repo:<owner>/<repo>:*` until ST-T3 narrowed it; it is now a **single** subject rather than
+  > a glob over owners — **and the conclusion above is completely unchanged**, because the
+  > trailing `:*` is the part that admits `:pull_request` (**F2**, still open, closed in S2-T2).
+  > *(b)* **An org-owned repo presents an ID-QUALIFIED subject** —
+  > `repo:<owner>@<org_id>/<repo>@<repo_id>:<context>` — which a plain
+  > `repo:<owner>/<repo>:*` glob **does not match**. That is what broke CI authentication at
+  > the transfer, measured from CloudTrail. **Do not "simplify" this to the plain form**, and
+  > do not trust `gh api .../actions/oidc/customization/sub`'s `use_immutable_subject: false` —
+  > it contradicts observed behaviour; read `sub_claim_prefix` and confirm against CloudTrail.
 - **Never interpolate `${{ }}` inline into a `run:` block** — *or into an
   `actions/github-script` `script:` block, which is `run:`-equivalent for injection.* Pass
   values via `env:` (read them as `process.env.X` in `github-script`), quote every expansion,
@@ -193,10 +203,22 @@ precious" is true of this lab and false of the account it runs in.
 - **Infisical is GONE** — deleted in **S0** (PR #20), not merely commented out, and
   `grep -rni infisical` over `modules/`, `environments/`, `bootstrap/` and `.github/` returns
   nothing. *(This bullet said "being removed (S3-T8) … dead commented-out code" until
-  2026-08-06; the removal moved earlier and `S3-T8` no longer exists.)* The **README still**
-  tells readers to provision a machine identity for it — that is stale README text, tracked as
-  #8. Do not revive either. This repo holds **no secrets** today — that is why the pattern is
-  being set now, before the first one exists.
+  2026-08-06; the removal moved earlier and `S3-T8` no longer exists.)* The README still **describes**
+  Infisical in three lines of stale prose (`README.md:5`, `:13`, `:26`) — tracked as #8, fixed
+  in S6-T1. *(Corrected 2026-08-07: this read "the README still **tells readers to provision a
+  machine identity** for it." It did on 2026-08-05; **S0-T7 deleted the Infisical prerequisite
+  and the `INFISICAL_*` lines from the `.env` block in the same PR that deleted the code**, so
+  what is left describes an integration that no longer exists rather than instructing anyone to
+  create a credential. The distinction matters: one is a live instruction to mint the exact
+  credential F52 says to revoke, the other is a stale sentence.)* Do not revive either.
+- ~~This repo holds **no secrets** today — that is why the pattern is being set now, before the
+  first one exists.~~ **Corrected 2026-08-07: this repo holds exactly ONE secret** —
+  `BUDGET_NOTIFICATION_EMAIL`, created by S0-T8 on 2026-08-06 and read by `deploy-ai-lab.yml`
+  as a `TF_VAR_`. It is an email address, i.e. **PII**, which is what makes it a secret rather
+  than a BR-D4 *restricted* variable. **It is a GitHub Actions secret, not an SSM parameter,
+  and that is a recorded exception rather than a violation** — a value a workflow needs at job
+  start has no SSM path it can read at that moment. The three-tier rule above is unchanged;
+  only the "before the first one exists" framing expired.
 
 ## Local: what must not be committed
 
@@ -269,18 +291,34 @@ mismatch there is not evidence of misconfiguration.
   task bodies below it were not all rewritten, so the banner wins.**
 - **`glunk-works/global-bootstrap`** — **read this before touching `bootstrap/`.** It is the
   organization's IaC foundation: the org state bucket + lock table (with per-project prefix
-  isolation), and **one CI role per project** generated from `var.projects` — which already
-  contains an entry for `bedrock-serverless-rag`. It **consumes** the GitHub OIDC provider as
+  isolation), and **one CI role per project** generated from `var.projects` — which
+  **no longer contains an entry for `bedrock-serverless-rag`**. *(It did until 2026-08-06;
+  `ST-T2′` / upstream PR #5 deleted it to close **F45** by removal.)* **So this project has no
+  upstream role today** — `github_actions_role_arns` holds no entry for it, and pointing
+  anything there yields an **empty ARN, not an error**. CI runs on this repo's own
+  `github-actions-deploy-role`; **S2-T0** re-creates the upstream entry *with* a permissions
+  boundary. It **consumes** the GitHub OIDC provider as
   a `data` source; this repo **creates** one, and an AWS account can hold only one per URL.
   **They share one AWS account** (confirmed 2026-08-05), so this repo's state owns the
-  federation endpoint every glunk-works pipeline depends on, with no `prevent_destroy`
-  (**F40** — ST-T1 is the stopgap, BR-D18 the fix).
+  federation endpoint every glunk-works pipeline depends on. It **does** carry
+  `prevent_destroy` — the ST-T1 stopgap merged in PR #17 and was verified against live state
+  (a targeted destroy plan fails). *(This bullet read "with no `prevent_destroy`" until
+  2026-08-07; that was true at evaluation and false from 2026-08-05.)* **The guard is a
+  stopgap, not the fix, and its limits are the point:** it is a plan-time guard over a **state
+  entry**, so it protects nothing if the gitignored local state file is lost (**F48**), and it
+  does not stop `tofu state rm` followed by a console delete. **BR-D18 is the fix** — ownership
+  moves to `global-bootstrap` in S2-T3. Do not read a "protected" resource here as a solved
+  problem (**F40**).
   **The ownership boundary is decided (BR-D17): `global-bootstrap` owns identity and state;
   this repo owns its workload and nothing else.** So `bootstrap/` is being **retired**, not
   hardened — do not design a role, a trust policy, or a state backend change here. Read
-  roadmap § 9 and `sprints/S2_identity_least_privilege/sprint_plan.md` first. Note also that
-  the org role's attached policy grants `lambda:*`/`apigateway:*`, which is **not this
-  workload** (F42), and that it becomes reachable the moment the repo transfers (**F45**).
+  roadmap § 9 and `sprints/S2_identity_least_privilege/sprint_plan.md` first. *(This paragraph
+  used to end: "the org role's attached policy grants `lambda:*`/`apigateway:*`, which is **not
+  this workload** (F42), and it becomes reachable the moment the repo transfers (**F45**)."
+  **Both halves are spent.** The transfer happened 2026-08-06/07 and that policy was **deleted**
+  before it, so **F45 is closed by removal** — no boundary was built. **F41 and F42 remain OPEN
+  org-wide** against the three surviving project policies: deleting one project's entry removed
+  an instance, not the pattern — `glunk-works/global-bootstrap#6`.)*
 - **`glunk-works/claude-workbench`** — the `way-of-working` plugin: skills, agents, the
   Global Conventions, and `reference/project-schema.md`.
 - **`glunk-works/bounty-infra`** — the sibling IaC repo already running this method. Read

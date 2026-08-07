@@ -8,23 +8,40 @@
 # option — a repo-local `.claude/skills/<name>/` shadows the plugin's copy entirely and
 # silently stops receiving upstream fixes.
 #
-# EVERY VALUE BELOW DESCRIBES THIS REPO AS IT IS ON 2026-08-05, not as the hardening
-# roadmap intends it to become — `repo:` above is the sharpest example: the transfer to
-# `glunk-works` is decided but has not happened. Two keys are `null` for exactly that reason (`ruleset.name`,
-# `review.ci_gate`) — see the notes on each. A sprint that changes one of these facts
-# updates this file in the SAME pull request; a stale value here makes every skill that
-# reads it report a confident answer about a repo that no longer exists.
+# EVERY VALUE BELOW DESCRIBES THIS REPO AS IT IS ON 2026-08-07, not as the hardening roadmap
+# intends it to become. A sprint that changes one of these facts updates this file in the SAME
+# pull request; a stale value here makes every skill that reads it report a confident answer
+# about a repo that no longer exists.
+#
+# EXACTLY ONE key is `null` on purpose: `review.ci_gate` (BR-D14 — no `architect-review` check).
+# ⚠️ `ruleset.name` is NOT null and has not been since 2026-08-05. This header claimed it was
+# until 2026-08-07, which was worse than an ordinary stale line: `ruleset` is what routes a
+# plugin skill down the gate / no-gate branch, so the claim told every skill to behave as if
+# `main` were unprotected on a repo that has an active, unbypassable ruleset. The identical
+# falsehood was corrected in `CLAUDE.md` in PR #31 and survived here for two more days —
+# which is the argument for reading this file rather than remembering it.
 
 # ── identity ─────────────────────────────────────────────────────────────────
-# Personal namespace, NOT `glunk-works/` — and that is load-bearing, not cosmetic.
-# `glunk-works/global-bootstrap` already generates a CI role for this project, but builds its
-# OIDC trust subject from `github_organization=glunk-works`, so `repo:glunk-works/...` never
-# matches a token minted here and that role is inert (F44). The owner name sits inside every
-# OIDC subject, which is why BR-D13 — "does this repo move to glunk-works?" — was promoted out
-# of S6 into a decision that had to precede S2. It is now RESOLVED (2026-08-05): the repo
-# transfers, executed by the ST sprint.
-# Until ST lands, this value is the truth. Change it only in the change that actually
-# transfers the repo — ST-T5 owns that edit, and this comment goes with it.
+# ✅ The transfer is DONE (BR-D13, executed by ST-T3, 2026-08-06/07 UTC). This repo is
+# ORG-OWNED. The value below is live truth, verified against GitHub and live AWS, not intent.
+#
+# The owner name is not cosmetic — it sits inside every OIDC subject, which is why BR-D13 was
+# promoted out of S6 into a decision that had to precede S2. Two consequences of the new value
+# that are live right now:
+#
+#   1. ⚠️ AN ORG-OWNED REPO PRESENTS AN ID-QUALIFIED OIDC SUBJECT:
+#          repo:<owner>@<org_id>/<repo>@<repo_id>:<context>
+#      A plain `repo:<owner>/<repo>:*` glob does NOT match it. That — not a missing repository
+#      variable — is what broke CI authentication at the transfer. Measured from CloudTrail;
+#      `gh api .../actions/oidc/customization/sub` reports `use_immutable_subject: false` and
+#      is WRONG, so read `sub_claim_prefix` and confirm against CloudTrail. Binds S2-T0/S2-T2.
+#   2. This project has NO upstream CI role today. `ST-T2′` deleted its `var.projects` entry
+#      from `glunk-works/global-bootstrap` to close F45 by removal, so
+#      `github_actions_role_arns` holds no entry for it — pointing anything there yields an
+#      empty ARN, not an error. CI runs on this repo's own `github-actions-deploy-role`
+#      (`bootstrap/`) until S2-T0 re-creates the entry WITH a permissions boundary.
+#
+# Change this value only in a change that actually moves the repository again.
 repo: glunk-works/bedrock-serverless-rag
 pr_base: main
 
@@ -93,10 +110,16 @@ gates:
 # id. That is exactly the trap the roadmap's 2026-08-06 log entry warns about -- never trust a
 # previously recorded id, and note the undo command below carries one. Re-read it live before
 # using it; a stale id either 404s or, worse, names a different ruleset.
-# Read live from `gh api repos/Seuss27/bedrock-serverless-rag/rules/branches/main`: exactly
-# the four rule types below, enforcement "active", `bypass_actors: []`. Verified end-to-end
-# the same day -- a direct `git push` to `main` was rejected with GH013 naming both the
+# Read live from `gh api repos/glunk-works/bedrock-serverless-rag/rules/branches/main`: exactly
+# the four rule types below, enforcement "active", `bypass_actors: []`. Verified end-to-end on
+# 2026-08-05 -- a direct `git push` to `main` was rejected with GH013 naming both the
 # `pull_request` rule and the missing `pr-title` status check.
+# ✅ RE-VERIFIED UNDER THE NEW OWNER by ST-T4 (2026-08-07) rather than assumed to survive the
+# transfer: same four rule types, same enforcement, `bypass_actors` still empty, and
+# `ruleset-drift.yml` manually dispatched green (run 31136157954). The path above was
+# `Seuss27/...` until the transfer; the command is operative, so it was updated -- unlike the
+# `Seuss27` strings in the sprint plans and the roadmap's finding inventory, which are
+# historical record and are exempt BY NAME (see ST Task 4's rewritten acceptance criterion).
 #
 # `required_approving_review_count` stays 0 (see the `pull_request` rule's parameters, not
 # reflected in this summary): GitHub forbids approving your own PR, so any value >= 1

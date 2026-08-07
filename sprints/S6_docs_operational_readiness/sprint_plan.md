@@ -51,9 +51,14 @@ as real values, including in a copied-and-pasted error message.
   - **Description:** The current README describes a repository that no longer exists: a flat
     root-level layout (`bedrock.tf`, `iam.tf`, `create_index.py` at the repo root) that the
     module refactor retired, a **Titan Text Embeddings v1** model the code replaced with v2,
-    an Infisical integration that is commented out in `providers.tf`, and a manual
-    `tofu apply` workflow that S1 replaced with a gated pipeline. Every one of those is a
-    reader following instructions into a failure.
+    an Infisical integration that ~~is commented out in `providers.tf`~~ **no longer exists
+    anywhere** *(corrected 2026-08-07 by ST-T5: S0-T7 **deleted** the scaffolding rather than
+    commenting it out — `grep -rni infisical` over `modules/`, `environments/`, `bootstrap/`
+    and `.github/` returns nothing, so there is no commented block to point at; what survives
+    is three lines of stale README prose, `:5`, `:13`, `:26`)*, and a manual
+    `tofu apply` workflow that S1 replaced with a gated pipeline. Most of those are a
+    reader following instructions into a failure; the Infisical lines are now merely a reader
+    believing something untrue, which is why S0 took the actionable half early.
     Rewrite around what is now true: the three OpenTofu roots and their different trust
     levels, the dataflow (S3 → Bedrock KB → AOSS → RetrieveAndGenerate), the pipeline
     (PR → plan → merge → approval → apply), the devcontainer as the supported development
@@ -124,8 +129,10 @@ as real values, including in a copied-and-pasted error message.
     designing trust policies, not a closing tidy-up (F44, roadmap § 9). This task now
     **confirms** what ST executed, and closes out the `pr_base` half.
   - **Description:** **The transfer was decided (BR-D13) and executed by the ST sprint**, so
-    this task is now a confirmation pass plus the `pr_base` half: verify no `Seuss27`
-    reference survives, that the ruleset and merge settings still hold under the org, and that
+    this task is now a confirmation pass plus the `pr_base` half: verify no **operative**
+    `Seuss27` reference survives (per ST Task 4's explicit file list — **not** a bare
+    `grep -rn Seuss27`; see the acceptance criteria below), that the ruleset and merge settings
+    still hold under the org, and that
     no org-level ruleset has since appeared that this repo cannot satisfy. The original
     ⚠️ **The transfer checklist that used to sit here has been DELETED, not retained.** It
     instructed the coder to *"apply `bootstrap/` with both old and new subjects, transfer,
@@ -141,10 +148,29 @@ as real values, including in a copied-and-pasted error message.
     repos both use `main`, so the likely outcome is confirming the deviation and recording it
     as intentional rather than as drift.
   - **Target Files:** `docs/hardening_roadmap.md`, possibly `.ai/project.yml`, `CLAUDE.md`
-  - **Acceptance Criteria:** BR-D13 records the transfer as **executed**, with the date. No
-    `Seuss27` reference survives anywhere. The ruleset and merge settings still hold under the
+  - **Acceptance Criteria:** ✅ BR-D13 records the transfer as **executed**, with the date
+    *(done by ST-T5, 2026-08-07 — so verify it, do not re-write it)*. ~~No `Seuss27` reference
+    survives anywhere.~~
+    > **⚠️ That criterion CANNOT PASS and must not be attempted** *(rewritten 2026-08-07 by
+    > ST-T5)*. It is the identical defect ST-T4 hit and diagnosed: `Seuss27` is **load-bearing
+    > historical record** in five sprint plans, in the roadmap's **F17 evidence row** and status
+    > log, and in `bootstrap/oidc-setup.tf`'s deliberate "never re-add this subject" warnings.
+    > Scrubbing them rewrites history to satisfy a grep. **Use ST Task 4's operative-file list
+    > instead** — it is exhaustive, grep-checkable, and exempts the historical record **by
+    > name**. Every entry on it was closed by ST-T4 and ST-T5, so this is a *verification*, not
+    > a hunt: `.ai/project.yml` (key **and** comment), `.github/CODEOWNERS`,
+    > `.github/ISSUE_TEMPLATE/config.yml`, `README.md`, `CLAUDE.md`, and the **live AWS trust
+    > policies** (checked with `aws iam get-role`, never against the HCL).
+    > **The general rule, which is the reusable part:** an acceptance criterion nobody can pass
+    > gets **waived wholesale**, taking the two references that genuinely rot silently down
+    > with it.
+
+    The ruleset and merge settings still hold under the
     org, and `gh api orgs/glunk-works/rulesets` has been read for any org-level rule this repo
-    cannot satisfy (a BR-D9 deadlock by another route). `.ai/project.yml`'s `repo` is
+    cannot satisfy (a BR-D9 deadlock by another route) — ⚠️ note that on the **Free** plan this
+    returns **403 upgrade-required**, and that a missing `admin:org` scope returns **404**,
+    which reads identically to "none exist"; record *verified absent* and *could not look* as
+    different answers. `.ai/project.yml`'s `repo` is
     `glunk-works/bedrock-serverless-rag`. **No transfer is performed by this task.**
 
 - **Task 5: Close the documentation loop**

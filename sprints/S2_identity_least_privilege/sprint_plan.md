@@ -167,7 +167,39 @@ identity mistake does not fail locally, while a workload mistake costs an apply.
        apply role, through the `production` Environment gate. **Both observed in real runs.**
     3. **Only then delete**, in `bootstrap/`: `aws_iam_role.github_actions_role`,
        `aws_iam_role_policy.state_access_policy` — the F1 escalation — and
-       `var.role_name` / `var.github_repo_path`. Human apply.
+       `var.role_name` / `var.github_oidc_subject_prefixes`. Human apply.
+       *(That second variable was `var.github_repo_path` until **ST-T3** replaced it; a
+       coder searching for the old name will not find it.)*
+
+    > ### ⚠️ ENUMERATING THE PLAIN SUBJECT FORM WILL BREAK CI — read before writing any
+    > `StringEquals` list
+    >
+    > **Discovered the hard way in ST-T3 (2026-08-06):** this repository is org-owned, and
+    > GitHub presents an **ID-qualified** OIDC subject, not the plain one:
+    >
+    > ```
+    > repo:glunk-works@<org_id>/bedrock-serverless-rag@<repo_id>:ref:refs/heads/main
+    > repo:glunk-works@<org_id>/bedrock-serverless-rag@<repo_id>:pull_request
+    > ```
+    >
+    > Measured from CloudTrail `AssumeRoleWithWebIdentity`, not inferred. The transfer broke
+    > CI authentication for exactly this reason: `repo:glunk-works/bedrock-serverless-rag:*`
+    > does **not** match a subject carrying `@<id>` segments.
+    >
+    > So an enumeration written from the plain form — the obvious way to satisfy the
+    > `StringEquals` criterion below — **reproduces that outage**, and it does so in the task
+    > that *also deletes the fallback role in step 3*. Order matters: verify (step 2) before
+    > deleting (step 3), and never collapse them.
+    >
+    > **Do not trust the API field over the evidence.**
+    > `gh api repos/<owner>/<repo>/actions/oidc/customization/sub` reports
+    > `use_immutable_subject: false` for this repository while `sub_claim_prefix` carries the
+    > ID-qualified value — and the ID-qualified value is what actually arrives. Read
+    > `sub_claim_prefix`, then confirm against CloudTrail.
+    >
+    > This applies to the **upstream** role too: `global-bootstrap` builds subjects from
+    > `github_organization` + `repo_name`, i.e. the plain form. Adopting that role (step 1)
+    > without fixing its subject construction fails the same way. Check it **before** step 3.
     F2 and F3 are closed by adoption rather than by fixing — **but not on the operator this
     task previously claimed.** ⚠️ This body used to assert *"the upstream role's trust is
     already `StringEquals` over an enumerated subject list."* **It is not.** Live

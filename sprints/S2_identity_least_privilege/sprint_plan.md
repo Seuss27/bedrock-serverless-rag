@@ -370,7 +370,7 @@ backend, on the upstream roles.** *(The "first time in this repo's history" appl
 Definition of Done, not this sprint's — `MW` runs first. What this sprint proves is that the
 cycle still works after the identity and backend swap, which is a different and equally
 necessary claim.)* The state object in the org bucket is client-side encrypted (BR-D22). `bootstrap/` contains no OIDC provider, no role,
-no bucket, no table. `/critic-gate` has run: `security-critic` (every task is a trust
+no bucket, no table. `/way-of-working:critic-gate` has run: `security-critic` (every task is a trust
 boundary or a credential scope) and `architect` (the adopt-verify-delete ordering is where a
 logic error becomes an outage).
 

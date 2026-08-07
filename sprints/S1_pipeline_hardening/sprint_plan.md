@@ -337,7 +337,7 @@ admin-capable apply until S2 lands.
 
 `gates.green` passes. Every check in `ruleset.required_checks` is green on the sprint's own
 PR. The apply job has been observed **pausing** for approval at least once.
-`/critic-gate` has run — propose `security-critic` (this diff is entirely trust-boundary and
+`/way-of-working:critic-gate` has run — propose `security-critic` (this diff is entirely trust-boundary and
 credential-handling) and `architect` (the required-check ordering and the plan/apply job
 split are where a logic error hides). The green gate and the CI checks are not the same
 thing and both must pass.

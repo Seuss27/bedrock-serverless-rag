@@ -257,7 +257,7 @@ one.**
 `gates.green` passes. **A `destroy` → `apply` → verify cycle has completed end-to-end, in CI,
 observed in real run links** — this is the whole sprint and no partial credit substitutes for
 it. F51, F39, F5, F46 and F55 are marked closed with the run links that prove each. Nothing
-shared with the organization was deleted, stated explicitly in the PR body. `/critic-gate` has
+shared with the organization was deleted, stated explicitly in the PR body. `/way-of-working:critic-gate` has
 run — propose `security-critic` (Task 0 changes an IAM policy, Task 2 changes a data-plane
 access policy) and `architect` (this sprint touches the module, the environment and the
 scripts at once).

@@ -174,7 +174,7 @@ are reached by mount or by re-authentication inside the container.
 
 `gates.green` passes **inside the container from a fresh clone**. All S0/S1 required checks
 green on the PR. The image has actually been built and entered — not merely described.
-`/critic-gate` has run; propose `security-critic` (an image that runs with developer
+`/way-of-working:critic-gate` has run; propose `security-critic` (an image that runs with developer
 credentials is a supply-chain surface: unpinned downloads, baked secrets, over-broad mounts)
 and `docs-consistency` (this sprint edits `CLAUDE.md`, the roadmap, and `.ai/project.yml`).
 

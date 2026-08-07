@@ -133,7 +133,7 @@ ruleset:
 
 # ── the fresh-session review gate ────────────────────────────────────────────
 # `null` is a decision, not a gap: this repo has no `architect-review` CI check. Its critic
-# pass is /critic-gate, run locally before the PR — which makes that pass the only critic
+# pass is /way-of-working:critic-gate, run locally before the PR — which makes that pass the only critic
 # look a diff gets before the human's merge click. S1 does NOT add one; the roadmap records
 # (BR-D14) that a review gate is worth nothing until the deterministic gates it sits beside
 # actually block a merge.

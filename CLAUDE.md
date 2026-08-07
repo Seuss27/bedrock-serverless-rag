@@ -230,6 +230,24 @@ reconnaissance, so they must not reach a PR comment, a workflow log, or a build 
 (BR-D4). Source documents and their embeddings live in S3 and the vector store only; never
 paste retrieved chunks or a model answer into an issue.
 
+**BR-D4 also binds the commands an agent runs, not just what gets committed.** A read-only
+command that *prints* a restricted value pulls it into a session transcript, which can be
+summarized, logged, or pasted onward — the value is disclosed before anyone decides to commit
+anything. **Prefer the projection that omits values:**
+
+- `gh variable list --json name` — the bare form prints `AWS_OIDC_ROLE_ARN`'s value, i.e. the
+  **account id**. *(Found live 2026-08-07 during an ST-T5 verification step.)*
+- `gh secret list` is safe — it never prints values — but `gh variable list` is not, and the
+  two look symmetrical.
+- `tofu output` / `tofu show` render state, which renders everything; `nonsensitive()` and a
+  `length()`/hash check are the pattern (§ 9.5 of the roadmap).
+- `aws sts get-caller-identity`, `aws iam get-role` and `aws opensearchserverless
+  batch-get-collection` all return restricted values — read them when you must, and quote
+  **resource names** rather than ARNs when writing the result down.
+
+The rule is the same one the workflow-log bullet states, applied one layer earlier: **decide
+you need the value before you print it.**
+
 ## Commands
 
 The **green gate** — what must pass before a PR — is `gates.green` in `.ai/project.yml`, not

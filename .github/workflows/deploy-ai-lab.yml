@@ -73,6 +73,17 @@ jobs:
         # repository secret to be set (S0-T8); until then this job's plan step fails on
         # "No value for required variable", same as any other missing required input.
         TF_VAR_budget_notification_email: ${{ secrets.BUDGET_NOTIFICATION_EMAIL }}
+        # MW-T6. The AOSS access policy's Principal list is fully declarative, so CI must
+        # supply the SAME set of ARNs a local admin-SSO apply does (this job's own deploy
+        # role, vars.AWS_OIDC_ROLE_ARN -- already an IAM role ARN, it's what role-to-assume
+        # takes above -- PLUS the human operator's SSO role) or CI's apply silently
+        # overwrites live state down to one principal, revoking local data-plane access
+        # until the next local apply restores it. Both ARNs are repository *variables*
+        # (BR-D4: restricted, not secret), never a literal in this committed file --
+        # SSO_ADMIN_ROLE_ARN carries the second one. Constructed as an HCL list literal via
+        # GitHub Actions' own string interpolation so neither ARN ever has to be typed,
+        # read, or printed anywhere in this file or a session transcript.
+        TF_VAR_data_plane_principal_arns: '["${{ vars.AWS_OIDC_ROLE_ARN }}","${{ vars.SSO_ADMIN_ROLE_ARN }}"]'
     steps:
       - uses: actions/checkout@v7
       
@@ -103,10 +114,37 @@ jobs:
       # for a TTY that a GitHub-hosted runner never provides -- an unattended hang holds
       # the state lock until GitHub's own job timeout, blocking every other tofu operation
       # against this state in the meantime.
+      #
+      # F16/BR-D4: `tofu plan` renders every known attribute, including ARNs, the account
+      # id and the AOSS collection endpoint, into a public workflow log if dumped raw.
+      # ⚠️ `-out=` does NOT suppress stdout -- it saves the plan ADDITIONALLY, so the full
+      # human-readable render still prints unless stdout is separately silenced. Redirect
+      # stdout only (diagnostics go to stderr, so a real plan failure still surfaces); the
+      # filename `tfplan` matches the exact name .gitignore already reserves for this
+      # purpose (F54) -- `tfplan.bin` would NOT be ignored and is one `git add -A` from
+      # publishing every value this redirect exists to withhold. The `  # ` allowlist below
+      # is value-free only as long as no resource in this repo uses for_each/count (a
+      # resource's instance key rides its address line) -- true today (grep -rn
+      # 'for_each|count *=' finds none), not enforced. S1-T4 owns building the real
+      # summarizer (`tofu show -json` + jq, format-drift-proof); this is a stopgap for
+      # MW-T6, not that task done early.
       - id: plan
-        run: tofu plan -no-color -input=false
+        run: |
+          set -euo pipefail
+          tofu plan -no-color -input=false -out=tfplan > /dev/null
+          echo "::group::Plan summary (BR-D4 -- resource addresses and change counts only, no attribute values)"
+          # A `tofu show` failure must abort the step (set -e on the assignment), which is
+          # NOT the same thing as grep matching nothing -- the two failure modes are kept
+          # separate here on purpose (a bare `... | grep ... || true` after `-o pipefail`
+          # would swallow both identically and let a broken plan look like a clean one).
+          summary="$(tofu show -no-color tfplan)"
+          printf '%s\n' "$summary" | grep -E '^(Plan:|No changes\.|  # )' || [ "$?" -eq 1 ]
+          echo "::endgroup::"
 
+      # Applies the EXACT plan saved above, not a fresh re-plan -- what gets applied is
+      # what the summary above described (closes F14's "re-plans rather than applying a
+      # saved plan" gap as a side effect of the F16 fix, not a separate change).
       - name: OpenTofu Apply
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: tofu apply -auto-approve -input=false
+        run: tofu apply -auto-approve -input=false tfplan
   

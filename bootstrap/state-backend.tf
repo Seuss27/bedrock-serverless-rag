@@ -34,20 +34,7 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "tofu_state_crypto
   }
 }
 
-# 2. The DynamoDB Table for State Locking
-# This prevents GitHub Actions and your local laptop from modifying infrastructure at the exact same time.
-resource "aws_dynamodb_table" "tofu_locks" {
-  name         = "bedrock-lab-state-locks"
-  billing_mode = "PAY_PER_REQUEST"
-  hash_key     = "LockID"
-
-  attribute {
-    name = "LockID"
-    type = "S"
-  }
-}
-
-# GitHub Actions access to s3 bucket and table
+# GitHub Actions access to s3 bucket
 resource "aws_iam_role_policy" "state_access_policy" {
   name = "OpenTofuStateAccess"
   role = aws_iam_role.github_actions_role.id
@@ -67,16 +54,6 @@ resource "aws_iam_role_policy" "state_access_policy" {
           aws_s3_bucket.tofu_state.arn,
           "${aws_s3_bucket.tofu_state.arn}/*"
         ]
-      },
-      {
-        Effect = "Allow"
-        Action = [
-          "dynamodb:DescribeTable",
-          "dynamodb:GetItem",
-          "dynamodb:PutItem",
-          "dynamodb:DeleteItem"
-        ]
-        Resource = aws_dynamodb_table.tofu_locks.arn
       },
       # Least Privilege Infrastructure Permissions
       {

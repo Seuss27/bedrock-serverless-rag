@@ -6,11 +6,11 @@ Regenerate this at the end of every working session.
 
 ## Now
 
-**`awaiting_review` — `ST` (organization transfer). The repo lives at
+**`implementing` — `ST` (organization transfer). The repo lives at
 `glunk-works/bedrock-serverless-rag`.**
 
-**ST-T3 (the transfer) is COMPLETE.** **ST-T4 is open for review as PR #34.** Only **ST-T5**
-(recording the outcome) remains before this sprint's `/archive-sprint`.
+**ST-T3 and ST-T4 are both COMPLETE and merged.** Only **ST-T5** (recording the outcome)
+remains before this sprint's `/archive-sprint`.
 
 ## Just done
 
@@ -28,9 +28,9 @@ Regenerate this at the end of every working session.
   - `/critic-gate` ran (`security-critic`, `docs-consistency`) on the T3 diff; every finding
     applied and merged. PR #31 (`2f9ca85`) fixed four stale `CLAUDE.md` claims. Issue #32
     filed: Checkov scans nothing and passes green.
-- **ST-T4 opened as PR #34** (`chore/st-t4-reestablish-transfer-settings`, off `main` at
-  `ae06e51`). Worked the sprint plan's rewritten, explicit operative-file list rather than the
-  old (unachievable) `grep -rn Seuss27` criterion:
+- **ST-T4 MERGED as PR #34** (`1c72369`, 2026-08-07T01:01:07Z). Worked the sprint plan's
+  rewritten, explicit operative-file list rather than the old (unachievable)
+  `grep -rn Seuss27` criterion:
   - Edited `.ai/project.yml` (`repo:` key → `glunk-works/bedrock-serverless-rag`; the
     explanatory **comment** above it is deliberately untouched — that's T5's job) and
     `.github/ISSUE_TEMPLATE/config.yml` (discussions URL repointed; Discussions confirmed
@@ -49,15 +49,15 @@ Regenerate this at the end of every working session.
   - Green gate passed (`tofu fmt`, `tofu validate` ×2 — only non-`.tf` files changed).
   - `/critic-gate` was **not** run on this diff — it touches neither `code_paths` entry
     (`modules/`, `environments/`, `bootstrap/`, `.github/workflows/`), so no pass was owed.
+  - The branch needed a **merge-main-in refresh** before merge — PR #33 landed first and
+    `strict_required_status_checks_policy` blocks a `BEHIND` branch. Refreshed by merging
+    `main` in (never rebase/force-push, per this repo's convention); `pr-title` re-ran clean
+    on the merge commit.
 
 ## Next
 
-**Human: review and merge PR #34 first.** ST-T5 rewrites `.ai/project.yml`'s `repo:` comment
-against the **merged** `repo:` value — starting T5 before #34 lands would edit prose to match
-a key that isn't on `main` yet.
-
-**Then `ST-T5` — record the outcome. Model: `opus` (architect); this is judgement work, not
-mechanical.**
+**`ST-T5` — record the outcome. Model: `opus` (architect); this is judgement work, not
+mechanical.** Nothing blocks it: no AWS apply, no irreversible action remains in ST.
 
 - Update `docs/hardening_roadmap.md`: mark **BR-D13 executed** with the transfer date, note in
   **F44/F45** what was verified (F45 closed **by removal**, not correction — state the
@@ -75,9 +75,9 @@ mechanical.**
 
 ## Open gates and blockers
 
-**HITL Gate: OPEN.** PR #34 needs human review and merge before ST-T5 begins — see above. No
-other human-only act remains in ST: no AWS apply, no irreversible action left. The gate after
-that is ST's completion review before `/archive-sprint`, which waits on T5 landing.
+**HITL Gate: NONE OPEN.** No human-only act remains in ST: no AWS apply, no irreversible
+action left. The next gate is ST's completion review before `/archive-sprint`, which waits on
+T5 landing.
 
 ## Pointers
 

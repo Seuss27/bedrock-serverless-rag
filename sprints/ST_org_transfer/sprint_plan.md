@@ -565,7 +565,25 @@ the transfer **succeeding**, quietly, with a side effect nobody reviewed.
     assume they survived. The org-ruleset result above is recorded in the PR body **with its
     reasoning** (verified-by-impossibility on the Free plan), not as a bare "checked".
 
-- **Task 5: Record the outcome**
+- **Task 5: Record the outcome — ✅ DONE 2026-08-07**
+  - **What was written, and where** *(so a reader can check the claim rather than trust it)*:
+    **`docs/hardening_roadmap.md`** — BR-D13 marked **executed** with the transfer window and
+    the ID-qualified-subject discovery; **F44**, **F45** and **F50** marked closed with their
+    *mechanisms* (deletion / removal / write-free drift commit, respectively); **F41** and
+    **F42** explicitly kept **OPEN org-wide** with `glunk-works/global-bootstrap#6` linked;
+    **F53** and **F17** marked to match reality; F55/F56/F57/F58's Sprint cells re-pointed at
+    `MW-T0` / `S2-T0`; § 5's hazards 2 and 6 and § 9.1/9.2/9.4's now-false upstream claims
+    corrected; the closed-findings summary restated as a **list** because the previous bare
+    count ("Two are closed") went stale silently through two whole sprints; and a status-log
+    row added. **`.ai/project.yml`** — the `repo:` comment rewritten, plus the header's false
+    claim that `ruleset.name` is `null` (the one value that routes a plugin skill down the
+    no-gate branch) and the `Seuss27/` path in an **operative** `gh api` example.
+    **`CLAUDE.md`** — the "no `prevent_destroy`" claim, the "`var.projects` already contains an
+    entry" claim, the F42/F45 "becomes reachable on transfer" pointer, and the live trust-policy
+    form the whole Actions section rests on. **Destination plans** — MW and S2 confirmed to
+    carry their re-homed findings, and the ST-era dependencies that can now *never* be
+    satisfied struck in both. **S3-T5** — the `managing-repo` tag **value** (operative, not
+    history). **S6-T4** — its `grep -rn Seuss27` criterion, the same unachievable one ST-T4 hit.
   - **Description:** Update `docs/hardening_roadmap.md`: mark **BR-D13 executed** with the
     transfer date, note in **F44/F45** what was verified, and add a status-log row. Update
     `.ai/project.yml`'s `repo:` comment — the long note explaining why the value is

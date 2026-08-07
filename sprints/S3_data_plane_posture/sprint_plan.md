@@ -195,7 +195,8 @@ to account administrator in an account shared with the whole organization (F1/F4
 - **Task 5: Tag every resource (F10)**
   - **Description:** Add `default_tags` to the `provider "aws"` block in **both**
     `environments/ai-lab/providers.tf` and `bootstrap/providers.tf`:
-    `owner`, `managing-repo` (`Seuss27/bedrock-serverless-rag`), `environment`
+    `owner`, `managing-repo` (**`glunk-works/bedrock-serverless-rag`** — corrected 2026-08-07
+    by ST-T5; it read `Seuss27/…`), `environment`
     (`ai-lab` / `global`), `cost-center` (`personal-lab`), `managed-by` (`opentofu`). The
     conventions require owner + managing-repo so drift is attributable to a repo; the cost
     tag matters because OpenSearch Serverless bills OCU-hours whether or not anyone queries.

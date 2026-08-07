@@ -1,5 +1,5 @@
 blank_issues_enabled: false
 contact_links:
   - name: Ask a question
-    url: https://github.com/Seuss27/bedrock-serverless-rag/discussions/new?category=q-a
+    url: https://github.com/glunk-works/bedrock-serverless-rag/discussions/new?category=q-a
     about: Have a question about our infrastructure architecture? Ask it here instead of opening an issue.

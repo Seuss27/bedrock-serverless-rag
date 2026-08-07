@@ -25,7 +25,7 @@
 # transfers, executed by the ST sprint.
 # Until ST lands, this value is the truth. Change it only in the change that actually
 # transfers the repo — ST-T5 owns that edit, and this comment goes with it.
-repo: Seuss27/bedrock-serverless-rag
+repo: glunk-works/bedrock-serverless-rag
 pr_base: main
 
 # ── the deep record ──────────────────────────────────────────────────────────

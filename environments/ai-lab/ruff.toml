@@ -1,0 +1,16 @@
+# Minimal, explicit rule set for CI (MW Task 2). `pip install ruff` with no config lets
+# ruff's own (currently very broad) default selection gate this pipeline, and that default
+# has already changed under us mid-sprint. Pin the linter version in the workflow AND pin
+# what it checks here, so a ruff upgrade can't fail CI with no change to this repo.
+#
+# `pyproject.toml` and a fuller ruff/bandit configuration are S5's job, not this one.
+# Scoped to this directory only (CI runs `ruff check .` from here) -- a future script
+# under `modules/` would not be covered by BLE001/PLR1722 until S5 broadens this.
+[lint]
+select = [
+    "E4", "E7", "E9",  # ruff's own historical minimal default (pycodestyle errors)
+    "F",               # pyflakes: undefined names, unused imports, etc.
+    "I",               # isort: import ordering
+    "BLE001",          # flake8-blind-except: no bare `except Exception`
+    "PLR1722",         # pylint: use sys.exit(), not the REPL-only exit()
+]

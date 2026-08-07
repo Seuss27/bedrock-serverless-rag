@@ -23,13 +23,25 @@ jobs:
       - uses: actions/checkout@v7
       - uses: opentofu/setup-opentofu@v2
 
-      # CONFIGURE CREDENTIALS FIRST
+      # Runs before AWS credentials exist in this job's environment: neither pip nor
+      # ruff/bandit need them, and a `pull_request`-triggered job's `pip install` is
+      # untrusted-dependency-execution surface -- don't hand it a live credential for
+      # free. See CLAUDE.md's GitHub Actions security section.
+      - name: Python Security & Linting
+        uses: actions/setup-python@v7
+        with: {python-version: '3.11'}
+      - run: |
+          pip install ruff==0.16.2 bandit==1.9.4
+          ruff check .
+          bandit -r .
+
+      # CONFIGURE CREDENTIALS FIRST (of the AWS-dependent steps below)
       # This provides the necessary OIDC tokens for the S3 backend to initialize
       - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
           aws-region: us-east-1
-      
+
       - name: OpenTofu Init
         run: tofu init
 
@@ -37,21 +49,13 @@ jobs:
         run: |
           tofu fmt -check -recursive ../../
           tofu validate
-      
+
       - name: Checkov IaC Scan
         uses: bridgecrewio/checkov-action@v12
         with:
           directory: ../../modules
           framework: terraform
           quiet: true
-
-      - name: Python Security & Linting
-        uses: actions/setup-python@v7
-        with: {python-version: '3.11'}
-      - run: |
-          pip install ruff bandit
-          ruff check .
-          bandit -r .
 
   opentofu-pipeline:
     name: OpenTofu Plan & Apply

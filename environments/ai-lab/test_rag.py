@@ -1,5 +1,8 @@
-import boto3
 import os
+import sys
+
+import boto3
+from botocore.exceptions import ClientError
 from dotenv import load_dotenv
 
 # 1. Load environment variables
@@ -9,7 +12,7 @@ kb_id = os.getenv("KNOWLEDGE_BASE_ID")
 
 if not kb_id:
     print("Error: KNOWLEDGE_BASE_ID not found in .env")
-    exit(1)
+    sys.exit(1)
 
 # 2. Authenticate using your active AWS CLI credentials
 session = boto3.Session()
@@ -57,7 +60,7 @@ def query_knowledge_base():
                     source_uri = doc.get('location', {}).get('s3Location', {}).get('uri', 'Unknown Source')
                     print(f"  [{i}] {source_uri}")
 
-    except Exception as e:
+    except ClientError as e:
         print(f"\nError querying Knowledge Base: {e}")
         print("\nTroubleshooting:")
         print("- Did you upload a document to your S3 bucket and click 'Sync' in the Bedrock Console?")

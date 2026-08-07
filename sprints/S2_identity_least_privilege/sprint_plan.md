@@ -86,10 +86,21 @@ identity mistake does not fail locally, while a workload mistake costs an apply.
   plan against that state describes a system that is not there. Several criteria here and in
   S3+S4 are "read the plan output" — **they are invalid until `MW` lands.**
 - Human `tofu apply` needed in `bootstrap/` (BR-D1) and in `global-bootstrap`.
-- **⚠️ `bootstrap/`'s state is still the unbacked-up local file (F48) during Tasks 3 and 4.**
+- **⚠️ `bootstrap/`'s state is still a single-machine local file (F48) during Tasks 3 and 4.**
   ST-T0's out-of-band backup criterion applies here too — re-take it before each apply in this
   sprint. Task 3's `tofu state rm` against the org-shared OIDC provider is the single operation
   in this roadmap where "the correct verb and the dangerous one" are the same string.
+  > **📥 Carried in from ST's completion review (2026-08-07) — treat as a BLOCKING precondition
+  > of Tasks 3 and 4, not a reminder.** ST's backup **was** taken, but two of its properties
+  > were **attested, never proven**: that the copy is *restorable*, and that it was re-taken
+  > immediately before ST-T3's narrow. **Before the first apply here, restore the copy to a
+  > scratch path and confirm it parses and lists `aws_iam_openid_connect_provider`.** An
+  > unverified backup is the ordinary way backups fail, and this one is the only record of the
+  > **org-shared federation endpoint** — `prevent_destroy` is a plan-time guard over a *state
+  > entry*, so it evaporates with the file. **Record the restore-test result in the PR body**,
+  > because ST's lesson was that a blocking criterion whose only evidence is memory is
+  > indistinguishable from one that was skipped. **Tracked as #37** — close it from the PR
+  > that performs the restore-test, not from here.
 - ⚠️ **Reversed 2026-08-05 (BR-D19/BR-D20).** This bullet used to read *"never resolve a state
   collision by deleting the live resource — the AOSS collection holds the embeddings."* It
   holds nothing; the corpus is empty. **Deleting the orphans and rebuilding is now the

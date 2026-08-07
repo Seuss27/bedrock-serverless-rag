@@ -99,6 +99,44 @@ profile. Two further consequences worth stating:
   against an earlier revision of the module. Never under the CI role, and never with the
   current module — but "destroy has never worked here" is not a thing anyone should believe.
 
+### ⚠️ Update, later the same day: the table above is stale — CI's own apply ran
+
+**The table above described the state as of the morning of 2026-08-07. It no longer does.**
+The push-triggered CI run for PR #43 (commit `ccc76e6`, ~15:04 UTC) reached the apply step —
+the first time this pipeline had ever gotten that far — and **partially succeeded**, discovered
+during Task 4's later handoff by re-running `tofu state list`, not assumed from any document.
+
+| resource | created by that apply? |
+| --- | --- |
+| AOSS collection `bedrock-rag-store` | **YES** |
+| AOSS encryption policy | **YES** |
+| AOSS network policy | **YES** |
+| S3 source bucket | **YES** (a `waiting for ... create: empty result` waiter error surfaced, but the resource landed in state — the bucket exists) |
+| `terraform_data.init_vector_schema` (the `create_index.py` local-exec) | recorded in state, **provisioner failed** |
+| IAM role `personal-bedrock-kb-execution-role` | **no — `EntityAlreadyExists`**, the same orphan-role collision F55 already documented, reconfirmed live |
+| AOSS data access policy, Bedrock KB, Bedrock S3 data source, Budget | **no** — each depends on the IAM role or a separate grant that also failed |
+
+**Two things worth recording precisely, not just "it partially failed":**
+
+1. **Task 3's fail-fast fix worked correctly under real, live failure conditions.** The apply
+   log shows exactly one attempt, then: *"not authorized to manage the OpenSearch Serverless
+   index. This is a permissions problem, not eventual consistency... Exiting without
+   retrying."* No exception text, no ARN, no endpoint in the log. This is the first live
+   confirmation of F46/F31's fix, not merely a passing local test.
+2. **The budget resource failed on `budgets:ModifyBudget` AccessDenied.** Live confirmation of
+   the `budgets:*` gap the regenerated verb list already names below — not a new finding, but
+   now measured rather than inferred a second time.
+
+**Disposition: destroy, not fix-forward — done.** Per BR-D20, this partial deployment was worth
+nothing — it indexed no documents and answered no queries — so the correct move was `tofu
+destroy` against these 5 resources (confirmed via a `tofu plan -destroy` first, not assumed),
+run by the operator under admin credentials the same session this was found. **Verified after:
+`tofu -chdir=environments/ai-lab state list` returns nothing, and the orphan IAM role is
+unchanged** (path `/`, zero inline and zero attached policies) — AWS is back to exactly the
+baseline the table at the top of this section describes. That table is therefore accurate
+again as of 2026-08-07, not stale; the correction above is a historical record of the
+in-between state, not the current one.
+
 ---
 
 ## ⚠️ The blocking gate — what survives, and what does not

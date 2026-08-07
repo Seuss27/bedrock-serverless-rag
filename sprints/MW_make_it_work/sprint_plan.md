@@ -138,7 +138,7 @@ again as of 2026-08-07, not stale~~ **superseded by the update immediately below
 day** — the correction above is a historical record of the in-between state, not the current
 one, and neither is the table at the top of this section any longer.
 
-### 🔄 Update, same day: Task 5's IAM widen — the PR is drafted, not yet applied
+### ✅ Update, same day: Task 5 done — the IAM widen is merged and applied
 
 **Both tables above are stale in the good direction.** Under admin SSO credentials: the
 orphan role was re-confirmed (path `/`, zero policies) and deleted; `bootstrap/` was applied
@@ -210,13 +210,16 @@ secret — the notification email — off AWS directly. And `iam:CreateServiceLi
 happened during this session's apply, and a permanent grant for an event that already occurred
 was harder to justify than re-adding it later if `MW`-T6 proves CI still needs it.
 
-**Status: the PR is drafted and the local green gate + two rounds of both proposed critics
-(`security-critic`, `docs-consistency`) pass. The human `bootstrap/` apply has not run yet** —
-until it does, the live `state_access_policy` does not
-yet hold these verbs, and this file's earlier claim that "the live policy matches the
-committed HCL exactly" (§ *The regenerated verb list*, below) is true of the **pre-widen**
-policy only. F55 and F39 are not marked closed in the roadmap until that apply completes;
-Task 5 step 4 explicitly calls for one PR, one human apply, in that order.
+**Status: done.** The local green gate + two rounds of both proposed critics
+(`security-critic`, `docs-consistency`) passed; the PR (#51) merged; the human `bootstrap/`
+apply ran and reported **`0 added, 1 changed, 0 destroyed`** — the policy body, and nothing
+else, confirming no drift touched the OIDC provider or any other `bootstrap/` resource. **F55
+is closed** in the roadmap. This file's earlier claim that "the live policy matches the
+committed HCL exactly" (§ *The regenerated verb list*, below) is therefore accurate again,
+now describing the **post-widen** policy rather than the pre-widen one that sentence was
+originally written about. **F39 stays open** — that finding's own closure criterion needs
+`MW`-T6's CI-driven `No changes.`, which this apply (run under admin SSO, on `bootstrap/`,
+not by CI) does not supply.
 
 The destroy path remains unmeasured — Task 5's harvest covers only the create path exercised
 here. Task 6 measures its own verb list when it runs `destroy → apply` under the CI role, and

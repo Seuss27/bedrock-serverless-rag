@@ -184,7 +184,7 @@ credentials, so an unpinned transitive dependency runs with those credentials.
 
 `gates.green` (now including the Python entries) passes inside the devcontainer. Every
 required check green. `pip-audit` reports zero unaddressed vulnerabilities — each finding
-either fixed by a version bump or recorded in the roadmap with a stated reason. `/critic-gate`
+either fixed by a version bump or recorded in the roadmap with a stated reason. `/way-of-working:critic-gate`
 has run; propose `architect` (test validity — a suite that passes when the guard is removed is
 worse than no suite) and `security-critic` (the disclosure paths in Task 4).
 

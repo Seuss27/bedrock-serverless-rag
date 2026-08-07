@@ -336,7 +336,7 @@ to account administrator in an account shared with the whole organization (F1/F4
 
 `gates.green` passes. Every required check green. Checkov passes across the whole repo with
 zero unjustified suppressions. Every `tofu plan` produced by this sprint has been read for
-**replacements** and the finding stated explicitly in the PR body. `/critic-gate` has run —
+**replacements** and the finding stated explicitly in the PR body. `/way-of-working:critic-gate` has run —
 propose `architect` (the replacement hazards are the whole risk here) and `security-critic`
 (key policies and bucket policies are trust boundaries).
 

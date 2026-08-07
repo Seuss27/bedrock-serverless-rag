@@ -208,7 +208,7 @@ roadmap, as "preventing" prompt injection.
 `gates.green` passes. Every required check green. **Three behavioral verifications are
 recorded in the PR body**, not asserted: the injection test (Task 1), the prefix-boundary
 test (Task 3), and the twice-run idempotency check with document counts (Task 4).
-`/critic-gate` has run — propose `security-critic` (TB3 is its whole subject) and `architect`
+`/way-of-working:critic-gate` has run — propose `security-critic` (TB3 is its whole subject) and `architect`
 (Task 4 restructures a module boundary and touches a `depends_on` graph).
 
 ---

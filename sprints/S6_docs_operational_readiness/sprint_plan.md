@@ -191,7 +191,7 @@ as real values, including in a copied-and-pasted error message.
 
 ## Definition of Done
 
-`gates.green` passes. Every required check green. `/critic-gate` has run with
+`gates.green` passes. Every required check green. `/way-of-working:critic-gate` has run with
 `docs-consistency` — this is the sprint that agent exists for, and it is the one critic that
 must not be skipped here. Every runbook command has been executed or its guard verified.
 BR-D13 is closed.
@@ -246,6 +246,6 @@ BR-D13 is closed.
   and the finding inventory describe past states on purpose. The agent's own brief is to
   distinguish a genuine contradiction from deliberate historical or aspirational prose; if it
   flags those, the fix is to make the framing unmistakable, not to delete the history.
-- *This sprint has no code paths*, so `/critic-gate` will propose few critics. Do not skip
+- *This sprint has no code paths*, so `/way-of-working:critic-gate` will propose few critics. Do not skip
   the pass on that basis — `docs-consistency` is the one that matters, and it is the only
   sprint where it is the primary rather than a secondary.

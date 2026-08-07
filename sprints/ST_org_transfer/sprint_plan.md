@@ -638,7 +638,7 @@ a trailing step. **Every finding re-homed by the 2026-08-06 reshape (F55 → MW;
 F57's boundary half → S2) is written into its destination sprint's plan**, not merely removed
 from this one.
 
-`/critic-gate` has run — propose `security-critic` (F45 is the entire reason this sprint has
+`/way-of-working:critic-gate` has run — propose `security-critic` (F45 is the entire reason this sprint has
 an ordering constraint, and the reshape changed *how* it is closed) and `docs-consistency`
 (Task 4 rewrites the repo path across every load-bearing document, and its criterion now
 deliberately **exempts** the historical record — an auditor working from the old

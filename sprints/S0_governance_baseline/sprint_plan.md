@@ -267,7 +267,7 @@ GitHub forbids approving your own pull request. No task here grants any new AWS 
 
 `gates.green` from `.ai/project.yml` passes (this sprint changes no `.tf`, so both
 `tofu validate` runs must still exit 0 — a regression here means something unrelated
-broke). `.ai/project.yml`'s `ruleset` block reflects live state. `/critic-gate` has run —
+broke). `.ai/project.yml`'s `ruleset` block reflects live state. `/way-of-working:critic-gate` has run —
 propose `docs-consistency` (this sprint edits load-bearing prose and `.ai/project.yml`) and
 `architect` (the ruleset ordering is the kind of logic error that only shows up as a
 deadlock). The PR title itself passes the gate the sprint installs.

@@ -21,6 +21,33 @@ jobs:
         working-directory: environments/ai-lab
     steps:
       - uses: actions/checkout@v7
+
+      # F-4 defense-in-depth: GitHub's log masking is exact-literal substring matching, so
+      # masking the full role ARN does not also mask the bare account id if it appears in
+      # a DIFFERENTLY-shaped string later -- e.g. an assumed-role ARN
+      # (arn:aws:sts::<acct>:assumed-role/<role>/<session>) in an AWS error message is a
+      # different string than the plain IAM role ARN, even though both share the account
+      # id substring. Deriving and masking the bare id separately closes that gap for
+      # every ARN shape at once. Safe via `env:` here (unlike the vars.* case elsewhere in
+      # this file) because secrets.* IS masked in this step's own preamble too -- proven
+      # in the same measured run the BR-D4 exception notes below are about.
+      - name: Register bare account id for log masking
+        env:
+          DEPLOY_ARN: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+        run: |
+          set -euo pipefail
+          account_id="$(echo "$DEPLOY_ARN" | cut -d: -f5)"
+          # Fail loudly rather than silently skip: an empty/malformed account id means
+          # this defense-in-depth control did NOT register, and a green step here must
+          # not be readable as "masking is active" when it isn't (F48's own lesson --
+          # a control whose only evidence is a step that also passes when it did nothing
+          # is indistinguishable from a miss).
+          if [[ ! "$account_id" =~ ^[0-9]{12}$ ]]; then
+            echo "::error::AWS_OIDC_ROLE_ARN did not yield a 12-digit account id -- account-id masking is NOT active"
+            exit 1
+          fi
+          echo "::add-mask::$account_id"
+
       - uses: opentofu/setup-opentofu@v2
 
       # Runs before AWS credentials exist in this job's environment: neither pip nor
@@ -37,9 +64,19 @@ jobs:
 
       # CONFIGURE CREDENTIALS FIRST (of the AWS-dependent steps below)
       # This provides the necessary OIDC tokens for the S3 backend to initialize
+      #
+      # BR-D4 EXCEPTION, recorded: this role ARN rides `secrets.*`, not `vars.*`, even
+      # though it is restricted-not-secret by BR-D4's own definition. Measured live
+      # 2026-08-07 (run 31226198865, deleted after capture): GitHub Actions dumps every
+      # `with:`/`env:` value from `vars.*` into the auto-generated step preamble it prints
+      # for EVERY step -- `uses:` steps included -- with no way to suppress or mask it
+      # after the fact. Only `secrets.*` is auto-masked, everywhere, unconditionally. On
+      # GitHub specifically, "restricted, use a variable" and "never in a workflow log"
+      # are in direct conflict; this is the one place BR-D4's stated split does not hold,
+      # and secrets.* is the only mechanism that delivers what BR-D4 actually wants here.
       - uses: aws-actions/configure-aws-credentials@v6
         with:
-          role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
           aws-region: us-east-1
 
       - name: OpenTofu Init
@@ -65,9 +102,21 @@ jobs:
       run:
         working-directory: environments/ai-lab
     env:
-        # This tells GitHub: "Take the value of your stored variable
-        # and give it to OpenTofu as TF_VAR_data_source_bucket_name"
-        TF_VAR_data_source_bucket_name: ${{ vars.DATA_SOURCE_BUCKET_NAME }}
+        # BR-D4 EXCEPTION, recorded in CLAUDE.md's BR-D4 section (see the identical note
+        # on the credentials step in security-and-linting above): all three of these ride
+        # `secrets.*`, not `vars.*`, even though none is secret by BR-D4's own definition
+        # (bucket name, two role ARNs -- restricted, not PII). Measured live 2026-08-07
+        # (run 31226198865, deleted after capture): a `vars.*` value used anywhere in a
+        # job -- `env:`, `with:`, doesn't matter -- prints in cleartext in the
+        # auto-generated preamble GitHub emits for EVERY step, `uses:` steps included,
+        # with no way to register it for masking before that first dump happens (the
+        # dump itself happens before any of this job's own script logic runs at all, so
+        # no step ordering fixes it). Only `secrets.*` is masked unconditionally,
+        # everywhere, from the first step onward -- proven in the same leaked run, where
+        # the one value already on `secrets.*` (below) rendered as `***` throughout while
+        # everything on `vars.*` did not. This is the sole mechanism that delivers what
+        # BR-D4 actually wants for a value that must not reach a workflow log.
+        TF_VAR_data_source_bucket_name: ${{ secrets.DATA_SOURCE_BUCKET_NAME }}
         # PII (BR-D4), so this rides a secret, not a variable -- a repo `vars.*` value
         # renders in cleartext anywhere it's echoed. Requires the BUDGET_NOTIFICATION_EMAIL
         # repository secret to be set (S0-T8); until then this job's plan step fails on
@@ -75,18 +124,37 @@ jobs:
         TF_VAR_budget_notification_email: ${{ secrets.BUDGET_NOTIFICATION_EMAIL }}
         # MW-T6. The AOSS access policy's Principal list is fully declarative, so CI must
         # supply the SAME set of ARNs a local admin-SSO apply does (this job's own deploy
-        # role, vars.AWS_OIDC_ROLE_ARN -- already an IAM role ARN, it's what role-to-assume
-        # takes above -- PLUS the human operator's SSO role) or CI's apply silently
-        # overwrites live state down to one principal, revoking local data-plane access
-        # until the next local apply restores it. Both ARNs are repository *variables*
-        # (BR-D4: restricted, not secret), never a literal in this committed file --
-        # SSO_ADMIN_ROLE_ARN carries the second one. Constructed as an HCL list literal via
-        # GitHub Actions' own string interpolation so neither ARN ever has to be typed,
-        # read, or printed anywhere in this file or a session transcript.
-        TF_VAR_data_plane_principal_arns: '["${{ vars.AWS_OIDC_ROLE_ARN }}","${{ vars.SSO_ADMIN_ROLE_ARN }}"]'
+        # role, secrets.AWS_OIDC_ROLE_ARN -- already an IAM role ARN, it's what
+        # role-to-assume takes above -- PLUS the human operator's SSO role) or CI's apply
+        # silently overwrites live state down to one principal, revoking local data-plane
+        # access until the next local apply restores it. Constructed as an HCL list
+        # literal via GitHub Actions' own string interpolation so neither ARN ever has to
+        # be typed, read, or printed anywhere in this file or a session transcript.
+        TF_VAR_data_plane_principal_arns: '["${{ secrets.AWS_OIDC_ROLE_ARN }}","${{ secrets.SSO_ADMIN_ROLE_ARN }}"]'
     steps:
       - uses: actions/checkout@v7
-      
+
+      # F-4 defense-in-depth -- see the identical step and comment in security-and-linting
+      # above. Registered per-job (masks don't cross the job boundary) and again as early
+      # as possible: the AOSS/Bedrock/S3 calls below are exactly where an AccessDenied
+      # would render an assumed-role ARN, a different string than the plain role ARN.
+      - name: Register bare account id for log masking
+        env:
+          DEPLOY_ARN: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+        run: |
+          set -euo pipefail
+          account_id="$(echo "$DEPLOY_ARN" | cut -d: -f5)"
+          # Fail loudly rather than silently skip: an empty/malformed account id means
+          # this defense-in-depth control did NOT register, and a green step here must
+          # not be readable as "masking is active" when it isn't (F48's own lesson --
+          # a control whose only evidence is a step that also passes when it did nothing
+          # is indistinguishable from a miss).
+          if [[ ! "$account_id" =~ ^[0-9]{12}$ ]]; then
+            echo "::error::AWS_OIDC_ROLE_ARN did not yield a 12-digit account id -- account-id masking is NOT active"
+            exit 1
+          fi
+          echo "::add-mask::$account_id"
+
       # 1. Setup Python
       - uses: actions/setup-python@v7
         with:
@@ -100,9 +168,11 @@ jobs:
       
       # 3. CONFIGURE CREDENTIALS FIRST
       # This provides the necessary OIDC tokens for the S3 backend to initialize
+      # BR-D4 EXCEPTION -- secrets.*, not vars.*; see the note on this job's own `env:`
+      # block above.
       - uses: aws-actions/configure-aws-credentials@v6
         with:
-          role-to-assume: ${{ vars.AWS_OIDC_ROLE_ARN }}
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
           aws-region: us-east-1
       
       # 4. Now initialize. Because credentials exist, the S3 backend will work.

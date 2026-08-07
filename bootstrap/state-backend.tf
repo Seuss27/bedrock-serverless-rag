@@ -34,6 +34,10 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "tofu_state_crypto
   }
 }
 
+# Used only to build partial-scope Resource ARNs below (role/collection wildcards) --
+# never for principal identification (that mistake is F5).
+data "aws_caller_identity" "current" {}
+
 # GitHub Actions access to s3 bucket
 resource "aws_iam_role_policy" "state_access_policy" {
   name = "OpenTofuStateAccess"
@@ -61,6 +65,22 @@ resource "aws_iam_role_policy" "state_access_policy" {
         Action = [
           "s3:CreateBucket",
           "s3:PutBucket*",
+          # GetBucket* covers most of the AWS provider's bucket-refresh reads (Acl, Cors,
+          # Logging, Policy, Replication is NOT one of these -- see below -- RequestPayment,
+          # Tagging, Versioning, Website). A handful of S3 config-read/write actions do NOT
+          # carry "Bucket" in their IAM action name despite the API being bucket-scoped, so
+          # this wildcard does not reach them -- granted explicitly instead. This is exactly
+          # F55's originally-named gap (`s3:PutBucket*` matches neither encryption verb);
+          # closing it needs the real action names, not the CloudTrail API-operation names
+          # they were harvested as. Cross-checked against the service authorization
+          # reference, not just CloudTrail -- confidence high but not exhaustively verified;
+          # re-check against a live plan before trusting this list for the destroy path too.
+          "s3:GetBucket*",
+          "s3:GetEncryptionConfiguration",
+          "s3:PutEncryptionConfiguration",
+          "s3:GetLifecycleConfiguration",
+          "s3:GetReplicationConfiguration",
+          "s3:GetAccelerateConfiguration",
           "s3:DeleteBucket",
           "iam:CreateRole",
           "iam:PutRolePolicy",
@@ -84,13 +104,79 @@ resource "aws_iam_role_policy" "state_access_policy" {
           "aoss:CreateCollection",
           "aoss:DeleteCollection",
           "aoss:UpdateCollection",
+          # aws_opensearchserverless_access_policy management -- MW-T5, measured.
+          "aoss:CreateAccessPolicy",
+          "aoss:GetAccessPolicy",
+          "aoss:UpdateAccessPolicy",
+          "aoss:ListTagsForResource",
           "bedrock:CreateKnowledgeBase",
           "bedrock:DeleteKnowledgeBase",
           "bedrock:CreateDataSource",
-          "bedrock:DeleteDataSource"
+          "bedrock:DeleteDataSource",
+          # Create waiters poll these. MW-T5, measured.
+          "bedrock:GetKnowledgeBase",
+          "bedrock:GetDataSource"
         ],
         Resource = "*" # This should be locked down outside of lab use
+      },
+      # AWS Budgets enforces via its coarse ModifyBudget/ViewBudget model, confirmed live: an
+      # earlier CI run's budget create failed AccessDenied on ModifyBudget specifically (see
+      # sprints/MW_make_it_work/sprint_plan.md "Measured live state"), not on any of the
+      # finer-grained action names the IAM reference also lists. MW-T5. Unlike most of this
+      # statement, Budgets DOES support resource-level scoping (arn:...:budget/<name>) --
+      # scoped to it rather than left flat, because ViewBudget on `*` would otherwise let a
+      # PR-triggered credential (F2/F3) read this repo's only secret straight out of AWS: the
+      # notification email subscriber list, which CLAUDE.md records as the one value in this
+      # repo that is PII rather than merely BR-D4 restricted.
+      {
+        Effect = "Allow"
+        Action = [
+          "budgets:ModifyBudget",
+          "budgets:ViewBudget",
+          "budgets:ListTagsForResource"
+        ]
+        Resource = "arn:aws:budgets::${data.aws_caller_identity.current.account_id}:budget/bedrock-serverless-rag-ai-lab-monthly"
+      },
+      # iam:PassRole -- needed for the KB's roleArn parameter on CreateKnowledgeBase.
+      # Conditioned on the passed-to service per the sprint's scoping decision, AND scoped to
+      # the path ST-T2a′ already gives bedrock_kb_role for exactly this purpose (F57) --
+      # unlike the flat verbs above, this one costs nothing to scope. MW-T5, measured.
+      {
+        Effect   = "Allow"
+        Action   = "iam:PassRole"
+        Resource = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:role/bedrock-rag/*"
+        Condition = {
+          StringEquals = {
+            "iam:PassedToService" = "bedrock.amazonaws.com"
+          }
+        }
+      },
+      # Data-plane grant, distinct from the data-access-policy principal above: without this
+      # the caller cannot reach the collection's index/document API at all. F55's "two
+      # independent grants" gap; the KB execution role already has it, scoped to its own
+      # single collection (modules/aws-bedrock-rag/iam.tf,
+      # OpenSearchServerlessAPIAccessAllStatement) -- the CI role did not have it at all.
+      # ⚠️ NOT the same scoping, despite the parallel: bootstrap/ cannot see the collection ID
+      # (it is generated in a different root), so this is a region-wildcarded `collection/*`,
+      # not one collection. Region wildcarded rather than hardcoded to environments/ai-lab's
+      # default: that root's `aws_region` is independently overridable (CLAUDE.md § Commands)
+      # and a mismatch here would fail closed but undiagnosably. The real residual this
+      # leaves: `aoss:CreateAccessPolicy`/`UpdateAccessPolicy` above are still flat on
+      # Resource = "*", so this role could rewrite ANY collection's data-access policy to
+      # name itself and then reach it via this grant -- narrowed to "any AOSS collection in
+      # this account+partition", not closed to "this project's collection only". No second
+      # AOSS consumer exists in the shared account today (bounty-infra's archive is S3+KMS),
+      # so blast radius is forward-looking, not live. MW-T5, measured.
+      {
+        Effect   = "Allow"
+        Action   = "aoss:APIAccessAll"
+        Resource = "arn:aws:aoss:*:${data.aws_caller_identity.current.account_id}:collection/*"
       }
     ]
   })
 }
+
+# ⚠️ TEMPORARY WIDEN (MW-T5, F55/F39). Every verb added by MW-T5 above -- and this whole
+# resource -- is deleted, not narrowed, by S2-T2 step 3 once CI adopts global-bootstrap's
+# roles. Do not treat this policy as a place to converge on least privilege; it goes away
+# wholesale. See sprints/S2_identity_least_privilege/sprint_plan.md Task 2, step 3.

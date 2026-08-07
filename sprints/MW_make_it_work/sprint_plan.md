@@ -133,9 +133,96 @@ destroy` against these 5 resources (confirmed via a `tofu plan -destroy` first, 
 run by the operator under admin credentials the same session this was found. **Verified after:
 `tofu -chdir=environments/ai-lab state list` returns nothing, and the orphan IAM role is
 unchanged** (path `/`, zero inline and zero attached policies) — AWS is back to exactly the
-baseline the table at the top of this section describes. That table is therefore accurate
-again as of 2026-08-07, not stale; the correction above is a historical record of the
-in-between state, not the current one.
+baseline the table at the top of this section describes. ~~That table is therefore accurate
+again as of 2026-08-07, not stale~~ **superseded by the update immediately below, the same
+day** — the correction above is a historical record of the in-between state, not the current
+one, and neither is the table at the top of this section any longer.
+
+### 🔄 Update, same day: Task 5's IAM widen — the PR is drafted, not yet applied
+
+**Both tables above are stale in the good direction.** Under admin SSO credentials: the
+orphan role was re-confirmed (path `/`, zero policies) and deleted; `bootstrap/` was applied
+and reported **`No changes.`** (its own state already matched live AWS with zero drift —
+nothing there needed rebuilding); `environments/ai-lab` was applied from scratch.
+
+The first `environments/ai-lab` apply built 9 of 12 planned resources and then failed fast
+at `terraform_data.init_vector_schema` — `boto3` was missing from the local Python
+environment (a workstation gap, not an AWS/IAM one; the dependency graph puts only 3
+resources at-or-below the vector index — itself, the Bedrock KB, and the KB's data source —
+so the other 9 were unordered relative to it and had already built before this attempt
+failed). After installing
+`environments/ai-lab/requirements.txt`, a retry hit a genuine authorization failure: the
+AOSS data-access policy's principal list (`data_plane_principal_arns`) did not include the
+admin SSO role's **IAM role ARN** (it had a stale placeholder value in one slot). Task 3's
+fail-fast fix caught this correctly and immediately — *"not authorized to manage the
+OpenSearch Serverless index... Exiting without retrying"* — the second live confirmation of
+F46/F31's fix. Correcting the principal list and re-applying completed the build: **all 12
+resources now exist in AWS and are tracked in state**, including the Bedrock Knowledge Base
+and data source that neither of the two earlier partial attempts (this session's or PR #43's)
+ever reached.
+
+| resource | exists in AWS? | present in state? |
+| --- | --- | --- |
+| S3 source bucket | **YES** | yes |
+| S3 source bucket encryption config | **YES** | yes |
+| AOSS collection `bedrock-rag-store` | **YES** | yes |
+| AOSS encryption policy | **YES** | yes |
+| AOSS network policy | **YES** | yes |
+| AOSS data access policy `personal-rag-data-access` | **YES** | yes |
+| Bedrock KB `serverless-rag-kb` | **YES** | yes |
+| Bedrock S3 data source | **YES** | yes |
+| Vector index (`terraform_data.init_vector_schema`) | **YES** | yes |
+| IAM role `personal-bedrock-kb-execution-role` | **YES** — recreated at path `/bedrock-rag/` (ST-T2a′) | yes |
+| IAM role policy `bedrock_kb_s3_policy` | **YES** | yes |
+| Budget `bedrock-serverless-rag-ai-lab-monthly` | **YES** | yes |
+| GitHub OIDC provider *(org-shared)* | yes, exactly 1 — **untouched throughout** | `bootstrap/`'s state, unaffected |
+
+**Verb list harvested from CloudTrail** (`lookup-events`, filtered by the operator's SSO
+username — not written here, BR-D4 — spanning both `environments/ai-lab` apply windows) —
+**not** from F55's text or from this file's own § *The regenerated verb list*, per the
+acceptance criterion. Cross-checked against AWS's service authorization reference before
+being written into `state_access_policy`, and that check plus the sprint's own `/critic-gate`
+pass (`security-critic` + `docs-consistency`, both proposed and run) caught real mapping
+errors before they shipped: the initial draft assumed `s3:GetBucket*` covered the encryption,
+lifecycle, replication and accelerate config verbs and separately carved out
+`s3:GetObjectLockConfiguration` as an exception — **backwards on both counts**. Those four
+config verbs do *not* carry "Bucket" in their real IAM action names (`s3:GetEncryptionConfiguration`
+etc.) and are not covered by the wildcard, while object-lock's real action name *does* carry
+"Bucket" and already was covered — so the encryption gap F55 originally named (`s3:PutBucket*`
+matches neither verb) was still open behind a comment asserting it was fixed. Corrected before
+the PR opened: the four config verbs are now granted explicitly, and the inert object-lock
+grant is dropped.
+
+**A second `/critic-gate` pass, re-run on the corrected diff, found three more real issues** —
+worth recording because it demonstrates the loop closing, not just the first pass:
+`iam:PassRole` is genuinely scoped to `role/bedrock-rag/*` (verified against the path
+`ST-T2a′` gives `bedrock_kb_role`), but `aoss:APIAccessAll`'s Resource is a **region-wildcarded
+`collection/*`, not the single-collection scope `modules/aws-bedrock-rag/iam.tf` uses** —
+`bootstrap/` cannot see the collection ID (a different root generates it), and the still-flat
+`aoss:*AccessPolicy` verbs mean this role could still rewrite another collection's data-access
+policy to reach it — narrowed, not closed, and the comment now says so instead of claiming
+parity it doesn't have. **`budgets:*` was wrongly declared unscoped** — AWS Budgets does
+support a `budget/<name>` resource ARN, confirmed on a second check, so it is now its own
+statement scoped to the one named budget rather than flat `Resource = "*"`; unscoped it would
+have let a `pull_request`-triggered credential (F2/F3, still open) read this repo's one PII
+secret — the notification email — off AWS directly. And `iam:CreateServiceLinkedRole` is
+**dropped entirely**: it is a one-time-per-account call, that account-wide bootstrap already
+happened during this session's apply, and a permanent grant for an event that already occurred
+was harder to justify than re-adding it later if `MW`-T6 proves CI still needs it.
+
+**Status: the PR is drafted and the local green gate + two rounds of both proposed critics
+(`security-critic`, `docs-consistency`) pass. The human `bootstrap/` apply has not run yet** —
+until it does, the live `state_access_policy` does not
+yet hold these verbs, and this file's earlier claim that "the live policy matches the
+committed HCL exactly" (§ *The regenerated verb list*, below) is true of the **pre-widen**
+policy only. F55 and F39 are not marked closed in the roadmap until that apply completes;
+Task 5 step 4 explicitly calls for one PR, one human apply, in that order.
+
+The destroy path remains unmeasured — Task 5's harvest covers only the create path exercised
+here. Task 6 measures its own verb list when it runs `destroy → apply` under the CI role, and
+should scope `s3:DeleteObject`/`s3:ListBucket` to the source bucket rather than following this
+statement's flat-`*` style — `force_destroy = true` on that bucket makes those two verbs a
+one-call destructive path if ever granted account-wide.
 
 ---
 

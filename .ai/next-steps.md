@@ -6,85 +6,67 @@ Regenerate this at the end of every working session.
 
 ## Now
 
-**`implementing` — `ST` (organization transfer, `Seuss27/` → `glunk-works/`).**
+**`implementing` — `ST` (organization transfer). The repo now lives at
+`glunk-works/bedrock-serverless-rag`.**
 
-The planning-review gate is **closed** — the human signed off on a reshaped ST on 2026-08-06.
+**`ST-T3` is COMPLETE.** The irreversible, time-critical part of this sprint is behind us.
 
 ## Just done
 
-**ST was reshaped at its pre-implementation review, and three of its tasks are complete.**
-
-- **F45 is now closed by *removal*, not correction.** The sprint had gated an irreversible
-  repository transfer on its own hardest task — a full permissions-boundary construction
-  upstream, merged *and* human-applied. Since the upstream role is **inert today** (F44),
-  deleting the project entry closes F45 outright at a fraction of the risk. Full reasoning,
-  and every downstream plan the change falsified, is in `docs/hardening_roadmap.md` § 10
-  (2026-08-06 entry) — **read that before touching ST, S1, S2 or MW.**
-- **T0 done** — `iam:ListAttachedRolePolicies` committed; `tofu plan` in `bootstrap/` reports
-  `No changes.` **It needed no apply**: the drift was *code behind live*, so it closed in the
-  direction that writes nothing. The sprint dropped from four human applies to **three**.
-- **T1 verified against live state** — `tofu plan -destroy` on the OIDC provider fails with
-  `Instance cannot be destroyed … lifecycle.prevent_destroy set`.
-- **T2a′ done** — `path = "/bedrock-rag/"` on the module's role, so **MW** rebuilds at the
-  right path and it is not replaced twice. The `permissions_boundary` half moved to S2.
-
-**`ST-T2′` is COMPLETE and verified.** Upstream PR **`glunk-works/global-bootstrap#5`** merged
-**2026-08-06T15:42:55Z** and was applied by a human. Verified against **live AWS, not the
-merged HCL**: `aws iam get-role --role-name github-actions-bedrock-serverless-rag` returns
-**`NoSuchEntity`**. **F45 is closed by removal.** The org-wide F41 issue is filed as
-**`glunk-works/global-bootstrap#6`** and linked from roadmap § 9.4.
-
-**F48's blocker is cleared** — `bootstrap/terraform.tfstate` and its `.backup` are copied
-out-of-band. That was the last thing standing between here and T3.
+- **Transfer executed**, and `ST-T3`'s `widen → transfer → narrow` completed **in one
+  session**, as the sprint required. PR **#29** (widen, `8563844`), PR **#30** (narrow,
+  `ae06e51`). Verified against **live AWS, not the HCL**: the trust policy is now the single
+  subject `repo:glunk-works@…/bedrock-serverless-rag@…:*`, **zero `Seuss27` occurrences**,
+  and both a push-context and a `pull_request`-context run authenticated afterwards.
+  `github-actions-bedrock-serverless-rag` still returns `NoSuchEntity`, so **F45 stayed
+  closed through the moment it would have activated**.
+- **⚠️ The transfer broke CI auth, and the reason is not in any plan.** An **org-owned** repo
+  presents an **ID-qualified** OIDC subject — `repo:<owner>@<org_id>/<repo>@<repo_id>:…` —
+  which a plain `repo:<owner>/<repo>:*` glob does **not** match. Measured from CloudTrail,
+  not inferred. **This is written into `S2-T2` and the roadmap's F2 row**, because
+  enumerating the *plain* form under `StringEquals` — the obvious way to satisfy S2-T2's
+  criterion — reproduces the outage, in the task that also deletes the fallback role.
+- **`/critic-gate` ran** (`security-critic`, `docs-consistency`); every finding was applied
+  and merged. Notably: a third validation now rejects `*`/`?` in a subject prefix (the two
+  original guards only caught inputs that already failed *closed*), the dead plain-form glob
+  was dropped, and the trust subjects moved **into committed code** so the boundary is
+  reviewable from the tree.
+- **PR #31 (`2f9ca85`)** fixed four stale `CLAUDE.md` claims — worst of them the assertion
+  that `.ai/project.yml`'s `ruleset` is `null`, the one sentence that routes a plugin skill
+  down the no-gate branch.
+- **Issue #32 filed:** Checkov scans **nothing** and passes green.
 
 ## Next
 
-**`ST-T3` — widen → transfer → narrow.** Nothing blocks it. **Model: `opus` (architect).**
+**`ST-T4` — re-establish what the transfer did not carry. Model: `sonnet` (coder).**
+Nothing blocks it; no AWS apply and no human-only act remain in ST.
 
-⚠️ **Do not start T3 without the runway to finish it.** The narrow is a blocking acceptance
-criterion that must land in the **same working session as the transfer** — see the gate below.
+**Two of its criteria are already verified — record them, do not redo them:** the ruleset
+**survived** intact (four rule types, `pr-title` required), and the repository variables and
+secret **survived too** (so the plan's "assume gone" is satisfied by observation).
 
-The three steps, in order, never combined:
+Still to do: merge settings from S0-T2, labels from S0-T3, `.github/CODEOWNERS` (still
+`* @Seuss27` — GitHub *silently ignores* entries for principals without write access), and
+the issue-template discussions URL. Work the plan's **explicit operative list**, never the
+old repo-wide `grep -rn 'Seuss27'` criterion — it is unachievable and would rewrite history.
 
-1. **Widen** (human apply, `bootstrap/`) — add the new owner as a *second* value on the single
-   `…:sub` key in `bootstrap/oidc-setup.tf`. **A list value, not two `StringLike` blocks** —
-   the latter is a duplicate-key error. Keep the existing `Seuss27` entry; do not edit it.
-   Then verify CI still authenticates **on the old owner**.
-2. **Transfer** — Settings → Danger Zone → Transfer, target `glunk-works`. **Human only**, and
-   irreversible in practice.
-3. **Verify, then narrow** (second human apply) — once a PR run *and* a merge-to-`main` run
-   have both authenticated under `glunk-works/…`, remove the old-owner entry.
-
-**Re-run `tofu plan` in `bootstrap/` immediately before each apply** — not once at the start.
-That root has no CI and no review, so drift can reappear between steps.
+**Then `ST-T5` — switch to `opus` (architect) for it.** Recording the outcome and the
+re-homed findings is judgement work, not mechanical.
 
 ## Open gates and blockers
 
-**HITL Gate: OPEN.** T3's first action is a human `tofu apply`. Two human-only acts remain:
+**HITL Gate: NONE OPEN.** Every human-only act in ST is done — the transfer, and all three
+`bootstrap/` applies. T4 and T5 are GitHub settings plus documentation.
 
-1. **T3's two `bootstrap/` applies** (widen, then narrow) — admin SSO, never CI (BR-D1);
-2. **the transfer itself** — a Settings UI action, irreversible in practice.
-
-An agent may prepare files and draft commands for both; it may execute neither.
-
-⚠️ **The narrow must complete in the same working session as the transfer.** Everything works
-without it and nothing gates it, so by default it slips — and the reason it matters is that
-**GitHub usernames are reclaimable**. Until it lands, a trust policy with a dangling
-`repo:Seuss27/bedrock-serverless-rag:*` glob stands against a role holding `iam:CreateRole`
-on `*` in the shared account.
-
-⚠️ **T3's narrow must complete in the same session as the transfer.** GitHub usernames are
-reclaimable, so the widen leaves a dangling-subject trust policy standing until it does.
+The next gate is **ST's completion review before `/archive-sprint`**, which must not run
+until T4 and T5 are both merged.
 
 ## Pointers
 
-- `docs/hardening_roadmap.md` — reference of record **and** threat model; § 10's 2026-08-06
-  entry is the authoritative record of the reshape.
+- `docs/hardening_roadmap.md` — reference of record **and** threat model.
 - `sprints/ST_org_transfer/sprint_plan.md` — **the active sprint.** It carries a **reshape
-  banner**; where the banner and a task body disagree, **the banner wins**. Task 2 is retained
-  but marked **SUPERSEDED** — implementing it re-creates the role F45 is about.
-- `sprints/S2_identity_least_privilege/sprint_plan.md` — new blocking **S2-T0** re-creates the
-  upstream entry *with* the boundary. **ST Task 2b is normative for it.**
-- `sprints/MW_make_it_work/sprint_plan.md` — F55 re-pointed at this repo's own
-  `state_access_policy`; MW's "adopt the upstream role first" option is **struck**.
-- `.ai/archive/S0-next-steps.md` — S0's final cursor, frozen for history.
+  banner**; where the banner and a task body disagree, **the banner wins.** Task 4's
+  acceptance criterion was rewritten, and the historical record is **exempt by name**.
+- `sprints/S2_identity_least_privilege/sprint_plan.md` — carries the ID-qualified subject
+  trap. **Read it before writing any `StringEquals` list.**
+- `.ai/state.json` — the machine cursor, with the full detail this file deliberately omits.

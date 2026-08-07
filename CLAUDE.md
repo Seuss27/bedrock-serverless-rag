@@ -265,11 +265,13 @@ aws sso login --profile admin-sso
 
 # `TF_VAR_<name>` is OpenTofu's own variable mechanism and `AWS_PROFILE` is the SDK's — no
 # wrapper is involved in either. The first three are what the wrapper used to inject; the
-# fourth arrived with S0's `budget.tf` and is just as required.
+# fourth arrived with S0's `budget.tf`, the fifth with MW-T4's AOSS principal fix — both are
+# just as required.
 $env:AWS_PROFILE                      = 'admin-sso'   # bootstrap/providers.tf sets no profile (F49)
 $env:TF_VAR_aws_region                = '<region>'    # has a default; override only if needed
 $env:TF_VAR_data_source_bucket_name   = '<bucket>'    # no default — required
 $env:TF_VAR_budget_notification_email = '<email>'     # no default — required; PII, never commit it
+$env:TF_VAR_data_plane_principal_arns = '["<deploy-role-arn>","<sso-role-arn>"]'  # no default — required; HCL list literal, not comma-separated
 
 tofu -chdir=environments/ai-lab plan
 ```

@@ -203,6 +203,14 @@ identity mistake does not fail locally, while a workload mistake costs an apply.
        `var.role_name` / `var.github_oidc_subject_prefixes`. Human apply.
        *(That second variable was `var.github_repo_path` until **ST-T3** replaced it; a
        coder searching for the old name will not find it.)*
+       > **This deletion also retires `MW`-T5's temporary widen of `state_access_policy`**
+       > (F55) — the `aoss:Create/Get/UpdateAccessPolicy` (no `Delete`; unmeasured, see
+       > below), `aoss:APIAccessAll`, `aoss:ListTagsForResource`, `bedrock:Get*`,
+       > `budgets:ModifyBudget`/`ViewBudget`/`ListTagsForResource`, `iam:PassRole` and
+       > `s3:GetBucket*`/encryption-config grants added there to prove the identity
+       > sufficient for a from-scratch build (the pre-existing `aoss:Create/DeleteSecurityPolicy`
+       > etc. predate `MW`-T5 and are F1's, not this widen's). No separate removal step is
+       > needed — the whole resource goes away here, widen and all.
 
     > ### ⚠️ ENUMERATING THE PLAIN SUBJECT FORM WILL BREAK CI — read before writing any
     > `StringEquals` list

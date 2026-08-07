@@ -45,13 +45,20 @@ Three OpenTofu roots, and the distinction matters for every change:
 > `-auto-approve` path in `deploy-ai-lab.yml` is still ungated — that half is unchanged.
 > *(Until 2026-08-06 this paragraph read "`main` has no branch protection … assume nothing in
 > `.github/workflows/` is blocking anything." Both halves were once true; only the second
-> still is.)* And **the
-> committed IaC does not describe the deployed system**: the resources exist in AWS but are
-> absent from the state CI reads, and **no CI apply has ever succeeded** (F39, confirmed from
-> run `26788807269`). Treat `tofu plan` output as unverified until **`MW`** reconciles state —
-> **by teardown and rebuild, never by import** (BR-D19, reversed by BR-D20: the corpus is
+> still is.)* And ~~**the committed IaC does not describe the deployed system**: the resources
+> exist in AWS but are absent from the state CI reads~~ **corrected 2026-08-07 by `MW`-T5: that
+> split brain is reconciled.** A from-scratch `environments/ai-lab` apply under admin SSO
+> — by teardown and rebuild, never by import (BR-D19, reversed by BR-D20: the corpus is
 > empty, so importing would be slower, riskier, and would freeze the current bad resource
-> names into the configuration).
+> names into the configuration) — put every declared resource into state. **What is still
+> true, and is the harder half:** the CI deploy role's own permissions are still **not**
+> sufficient — the admin-SSO apply only *measured* what a widen needs, its PR has not been
+> human-applied yet (F55, open), and **no CI apply has ever succeeded** (F39/F51 — every
+> push-to-`main` run remains `failure`; the historically-cited run `26788807269` is from
+> 2026-06-01 and is illustrative, not current evidence) — `MW`-T6 is what proves a CI-driven
+> `destroy → apply` cycle, not `MW`-T5. Treat `tofu plan` output as trustworthy for
+> `environments/ai-lab` **locally, under admin SSO** — CI's own plan step currently fails
+> before it gets that far, on an unrelated missing-variable gap (`.ai/next-steps.md`).
 
 ## The working method (owned elsewhere — do not restate it here)
 

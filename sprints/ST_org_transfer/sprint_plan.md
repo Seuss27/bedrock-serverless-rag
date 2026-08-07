@@ -115,9 +115,14 @@ the transfer **succeeding**, quietly, with a side effect nobody reviewed.
   - **✅ Criterion 1 MET 2026-08-06** — `iam:ListAttachedRolePolicies` is committed to
     `bootstrap/state-backend.tf` and a live `tofu plan` now reports **`No changes.`**
     **No apply was required:** live already had the action and the code did not, so committing
-    it closed the gap in the direction that needs no write. **Criterion 2 (the off-workstation
+    it closed the gap in the direction that needs no write. ~~**Criterion 2 (the off-workstation
     state backup) is still OUTSTANDING and still blocks Task 3's applies** — it is not
-    discharged by criterion 1, and Task 3 is where the applies now live.
+    discharged by criterion 1, and Task 3 is where the applies now live.~~ **✅ Criterion 2 MET
+    too — the backup was taken; confirmed by the operator at ST's completion review on
+    2026-08-07.** Its restore-test is **attested, not proven**, and is carried into S2-T3/T4 as
+    a blocking precondition, **tracked as #37**. See criterion 2's own bullet below for the
+    process finding — and note that this very line was the *third* place in this repo where a
+    corrected fact survived in a summary while the detail beside it was fixed.
   - **Description:** `tofu apply` in `bootstrap/` is **not** currently a no-op. A live plan on
     2026-08-05 reports **`1 to change`**: it removes `iam:ListAttachedRolePolicies` from
     `state_access_policy`. That action exists in the **live** AWS policy and not in the
@@ -138,7 +143,18 @@ the transfer **succeeding**, quietly, with a side effect nobody reviewed.
     **`No changes.`** That is the gate for every later apply in this sprint: **if plan is not
     clean, do not apply.** Re-run it immediately before each of Task 3's applies, not just once
     at the start — `bootstrap/` has no CI and no review, so drift can reappear between tasks.
-  - **Acceptance Criteria — 2 of 2 (blocking, F48):** **`bootstrap/terraform.tfstate` and
+  - **Acceptance Criteria — 2 of 2 (blocking, F48) — ✅ MET; confirmed by the operator
+    2026-08-07 at ST's completion review, and recorded only then.** The location is
+    deliberately not written down (public repo, BR-D4). ⚠️ **"Verified restorable" and the
+    re-take before the narrow are attested, not proven — carried into S2-T3/T4** as a
+    blocking precondition of the applies there (**tracked as #37**), which include `tofu state rm` against the org-shared
+    OIDC provider. **📌 The process lesson is the durable part:** this criterion gated the two
+    applies of an irreversible sprint, and for about a day afterwards nothing in the repo could
+    distinguish "satisfied" from "skipped" — the roadmap said *still outstanding*, neither
+    apply PR mentioned it, and closing the sprint required asking a human. **A blocking
+    criterion must record its own satisfaction in the PR that relies on it**; one whose only
+    evidence is memory has already failed for the next reader. The criterion follows.
+    **`bootstrap/terraform.tfstate` and
     `bootstrap/terraform.tfstate.backup` are copied out-of-band — encrypted, off this
     workstation — and the copy is verified restorable, before the first apply of this sprint,
     and again immediately before Task 3's narrow step.**

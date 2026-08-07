@@ -10,58 +10,67 @@ Regenerate this at the end of every working session.
 
 Read the banner under the sprint plan's title before any task body. **The task numbers
 moved:** what the roadmap and older docs call `MW-T0/T1/T2/T3` are now Tasks **5/6/4/3**.
-Tasks 2, 3, 4 are **done**. Task 1 is **done** (`#37` closed 2026-08-07). **Task 5 is next.**
+Tasks 1–5 are **done**. **Task 6 — the sprint's last task — is next.**
 
 ## Just done
 
-- **Task 1 (`#37`) closed.** Restore-test of the `bootstrap/` state backup performed and
-  recorded 2026-08-07, entirely outside any session tool call (BR-D4 — the backup's location
-  and contents never entered a transcript). Result, recorded as a comment on the issue: the
-  scratch-path copy parsed as valid JSON tfstate; `tofu state list` (resource addresses only,
-  no ARN/account id) confirmed `aws_iam_openid_connect_provider.github_actions` present; the
-  backup's timestamp predates PR #48 (it still lists `aws_dynamodb_table.tofu_locks`, which no
-  longer exists live), consistent with it being the copy re-taken immediately before ST-T3's
-  narrow rather than the older ST-T0 copy; the scratch copy was deleted after verification.
-  **Task 5's own PR must still quote this result** — the sprint plan's acceptance criteria
-  treat the issue comment as necessary, not sufficient.
-- Prior session's work (Task 4 / PR #45, the CI-hang fixes / PR #46, the DynamoDB-locking
-  migration / PRs #47–48) is unchanged and already on `main` — see git log and
-  `sprint_plan.md`'s "Update, later the same day" subsection, not repeated here.
+- **Task 5 (F55, F39) closed 2026-08-07.** Orphan `personal-bedrock-kb-execution-role`
+  re-confirmed and deleted; `environments/ai-lab` applied from scratch under admin SSO (all
+  12 resources now exist in AWS and are tracked in state); verb list harvested from CloudTrail
+  against that real apply, not copied from any prior document; `state_access_policy` widened
+  in PR #51, which merged and was human-applied the same day (`bootstrap/` apply: `0 added,
+  1 changed, 0 destroyed`). Two rounds of `/critic-gate` (`security-critic`,
+  `docs-consistency`) ran against the widen and both found real defects that were fixed before
+  merge — a wildcard-mapping error that would have left F55's own named `s3:*EncryptionConfiguration`
+  gap open, and an unscoped `budgets:*` grant that would have exposed this repo's one PII
+  secret to a `pull_request`-triggered credential. Full account in
+  `sprints/MW_make_it_work/sprint_plan.md` § *Update, same day: Task 5 done*.
+- **F39 is half-closed, not fully** — `environments/ai-lab`'s state now matches AWS (Task 5's
+  half), but the finding's own criterion also needs `MW`-T6's CI-driven `No changes.` with a
+  run link. Don't read F39 as closed.
+- Task 1 (`#37`) closed 2026-08-07 — restore-test of the `bootstrap/` state backup, entirely
+  outside any session tool call (BR-D4). Unchanged from before, not repeated here.
 
 ## Next
 
-**MW Task 5 (F55, F39): establish identity sufficiency, and delete the orphan.** Human-only
-through the CloudTrail harvest:
+**MW Task 6 (F51, F39): prove the cycle under the CI role — the sprint's Definition of Done.**
 
-1. Under AWS admin SSO, **re-confirm under a fresh measurement** (don't trust any prior
-   document) that `personal-bedrock-kb-execution-role` still has path `/` and zero attached
-   policies, then **delete it**.
-2. **`tofu apply` `bootstrap/` from scratch** under those same credentials (BR-D1).
-3. **Harvest the verb list from CloudTrail** for that apply window — not from F55's text, not
-   from the sprint plan's own regenerated-list table (see "Pointers" below).
-4. Hand the verb list to the coder, who drafts the **`state_access_policy` widen PR**: one PR,
-   quoting Task 1's restore-test result, stating the OIDC provider was untouched, and recording
-   the grant as temporary with its removal written into `S2-T2` step 3 **in the same PR**.
+1. **Fix the resource-name hazard** (opportunistic, cheap now): `opensearch.tf` writes
+   `collection/bedrock-rag-store` as a literal inside both AOSS security policies while the
+   collection resource declares the same name separately — CLAUDE.md's own documented hazard.
+2. **`destroy → apply` under the CI role, in CI**, followed by an end-to-end
+   `RetrieveAndGenerate` query. A passing plan does not close this — the round trip does.
+3. **Harvest Task 6's own verb list from CloudTrail** when the destroy runs. Task 5's harvest
+   covered the create path only; do not assume `state_access_policy` is sufficient for
+   destroy. In particular `s3:DeleteObject`/`s3:ListBucket` are still scoped to the state
+   bucket only — given `force_destroy = true` on the source bucket, widen them scoped to that
+   bucket specifically, not to the flat `Resource = "*"` style the rest of the statement uses.
+
+**Blocked until a human decides:** `deploy-ai-lab.yml` has no `TF_VAR_data_plane_principal_arns`
+wired at all, so a CI plan currently fails "No value for required variable" before reaching
+apply. Wiring it needs a human decision on which ARNs and how they're sourced into a GitHub
+Actions variable (BR-D4 — don't fetch/print the value in-session). Ask before wiring it.
 
 ## Open gates and blockers
 
-**HITL Gate: OPEN.** Task 5 steps 1–2 need a human operator with AWS admin SSO credentials
-(BR-D1) — `/resume` must not auto-start them. Once the human has applied and harvested the
-verb list, the coder's drafting step (step 4) has no further gate of its own.
+**HITL Gate: OPEN.**
+- The `data_plane_principal_arns` CI-wiring gap blocks Task 6 and needs a human decision
+  first — see above.
+- Task 6's CI-triggered destroy/apply is the first-ever real CI apply in this project's
+  history; a human should watch it run rather than have it fire unattended.
+- `glunk-works/global-bootstrap#7` (org-wide lock-table question) still awaits a response —
+  informational, not blocking.
 
-- **`data_plane_principal_arns` CI-wiring gap** — still open, still deliberately deferred; ask
-  before wiring it. Blocks Task 6 regardless of Task 5's progress.
-- **`glunk-works/global-bootstrap#7`** (org-wide lock-table question) — awaits a response;
-  informational, not blocking this repo's work.
+**Known follow-up, not blocking:** `sprints/S1`, `S3`, `S4` (and `S2`'s own risk section)
+still restate F39's old pre-`MW`-T5 "split-brain" premise in their own text. None of those
+sprints have started; correct opportunistically if touching those files.
 
 ## Pointers
 
-- `sprints/MW_make_it_work/sprint_plan.md` — the active sprint. Read the banner, then Task 5's
-  full step list before executing it.
-- `docs/hardening_roadmap.md` — reference of record and threat model.
-- **Regenerate Task 5's verb list from CloudTrail on the real apply** — not from F55, not from
-  the sprint plan's own table. `dynamodb:*` verbs are no longer needed on `state_access_policy`
-  at all — don't re-add them.
+- `sprints/MW_make_it_work/sprint_plan.md` — the active sprint. Read the banner, then Task 6's
+  full step list and Definition of Done before executing it.
+- `docs/hardening_roadmap.md` — reference of record and threat model. F55 closed; F39 half
+  closed; F5/F46 confirmed under a human principal only, not yet under CI.
 - An org-owned repo presents `repo:<owner>@<org_id>/<repo>@<repo_id>:<context>`; a plain
   `repo:<owner>/<repo>:*` glob does not match it — see `bootstrap/oidc-setup.tf`'s comment
-  block. Binds S2-T0/S2-T2, not Task 5.
+  block. Binds S2-T0/S2-T2, not Task 6.

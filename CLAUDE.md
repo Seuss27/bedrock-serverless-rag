@@ -51,9 +51,10 @@ Three OpenTofu roots, and the distinction matters for every change:
 > — by teardown and rebuild, never by import (BR-D19, reversed by BR-D20: the corpus is
 > empty, so importing would be slower, riskier, and would freeze the current bad resource
 > names into the configuration) — put every declared resource into state. **What is still
-> true, and is the harder half:** the CI deploy role's own permissions are still **not**
-> sufficient — the admin-SSO apply only *measured* what a widen needs, its PR has not been
-> human-applied yet (F55, open), and **no CI apply has ever succeeded** (F39/F51 — every
+> true, and is the harder half:** proven *permissions* are not a proven *pipeline* —
+> `state_access_policy` now holds the widened verb set live (F55, closed 2026-08-07,
+> confirmed by a `bootstrap/` apply reporting exactly one resource changed) — and
+> **no CI apply has ever succeeded** (F39/F51 — every
 > push-to-`main` run remains `failure`; the historically-cited run `26788807269` is from
 > 2026-06-01 and is illustrative, not current evidence) — `MW`-T6 is what proves a CI-driven
 > `destroy → apply` cycle, not `MW`-T5. Treat `tofu plan` output as trustworthy for

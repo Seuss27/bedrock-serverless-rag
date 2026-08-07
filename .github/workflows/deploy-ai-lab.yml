@@ -99,10 +99,14 @@ jobs:
         run: tofu init -get=true
       
       # 5. Plan and Apply
+      # -input=false: a missing required variable must fail the run, not block it waiting
+      # for a TTY that a GitHub-hosted runner never provides -- an unattended hang holds
+      # the state lock until GitHub's own job timeout, blocking every other tofu operation
+      # against this state in the meantime.
       - id: plan
-        run: tofu plan -no-color
-        
+        run: tofu plan -no-color -input=false
+
       - name: OpenTofu Apply
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: tofu apply -auto-approve
+        run: tofu apply -auto-approve -input=false
   

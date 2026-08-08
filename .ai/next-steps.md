@@ -6,59 +6,81 @@ Regenerate this at the end of every working session.
 
 ## Now
 
-**`done` — `S1a` (the F13 gate).** `S1a` = Task 5 alone, merged as PR #69 (`664ea62`).
-`S1b` (`T2 → T1 → T4 → T3 → T6 → T7`) has not started — the sprint plan calls for a
-reassessment pause between the two slices, and that reassessment is what's next.
+**`implementing` — `S1b` (the pipeline rewrite).** Five tasks, `T2 → T1 → T3 → T6 → T7`.
+
+> **Why `implementing` and not `planning`** *(the usual state after a sprint close)*: `S1b`'s
+> planning pass already happened and merged as PR #71. There is no design question left open —
+> `T2` is ready to write.
 
 ## Just done
 
-**`S1a`-T5 implemented, critic-reviewed, and merged.** `.github/workflows/deploy-ai-lab.yml`
-now splits the fused plan+apply job into `tofu-plan-main` → `tofu-apply`, with
-`environment: production` on `tofu-apply` only, a saved-plan apply (F14), a workflow-level
-`concurrency` group (F20), and the `paths:`/`name:` overrides removed (F18 half).
+**`S1a` closed and archived** (final cursor snapshot: `.ai/archive/S1a-next-steps.md`).
 
-- **`/critic-gate` ran before shipping** (security-critic + architect, both confirmed by the
-  owner). Both independently caught the same **HIGH-severity regression** in the first
-  draft: the plan/apply split had dropped `-no-color … > /dev/null` from `tofu plan`, which
-  would have dumped the full plan render — account id, role ARNs, the AOSS endpoint — into
-  the **public** workflow log on the next infra-bearing merge. Fixed before merge. Also
-  fixed: `persist-credentials: false` on `tofu-apply`'s checkout, `-lock-timeout=5m` on its
-  apply step, null-safe jq, a matching plan-file cleanup step.
-- **Two residuals recorded as comments, not fixed** — both already named as accepted in the
-  sprint plan's own Critical Review: the plan the approver reads (`tofu-plan-main`'s) isn't
-  quite the plan that applies (`tofu-apply` re-plans after approval); and a burst of 3+
-  rapid merges can silently drop a *pending* run's approval (`cancel-in-progress: false`
-  still correctly protects any *in-progress* apply).
-- **The `production` Environment was created out-of-band**, with the owner's explicit
-  go-ahead — required reviewer `Seuss27`/`22668449`, `protected_branches: true`, verified
-  live both before and after creation.
-- **The gate was observed working on this PR's own merge** — `tofu-plan-main` succeeded,
-  `tofu-apply` sat in `waiting`, and the owner saw GitHub's own "requested your review to
-  deploy to production" notification live. T5's Definition of Done is fully satisfied.
+- **`S1a`-T5 merged as PR #69 (`664ea62`)** — `tofu-plan-main` → `tofu-apply`,
+  `environment: production` on the apply job only, saved-plan apply (F14), workflow-level
+  `concurrency` (F20), `paths:`/`name:` removed (the F18 half). **Verified live, not inferred:**
+  run `31272226259` — plan green in 32s, apply paused in `waiting`, approved, applied green in
+  40s. Closes **F13, F14, F16, F20** and half of **F18**.
+- **The mandated reassessment ran and merged as PR #71 (`8cc1d5b`).** `S1b` went from six tasks
+  to five. **`T4` deferred to `S2`**; **`checkov` run by `T3` but not required by `T7`** (gating
+  moved to `S3`). The approval-on-every-merge trade it was called to weigh is **confirmed
+  unchanged**.
 
 ## Next
 
-**Human: reassess `S1b`'s task order/scope** in light of what `S1a` actually showed — with
-`paths:`/`name:` gone, **every** merge to `main`, including docs-only ones, now triggers
-`tofu-plan-main` + `tofu-apply` and consumes an approval. Confirm that trade is still
-accepted before starting the six-task rewrite (`sprints/S1_pipeline_hardening/sprint_plan.md`'s
-2026-08-08 banner has `S1b`'s full order: `T2 → T1 → T4 → T3 → T6 → T7`).
+**`S1b`-T2 — split `deploy-ai-lab.yml` into `ci.yml` + `deploy.yml`.**
 
-Once reassessed: either run `/way-of-working:archive-sprint` to formally close `S1a` and
-advance the cursor to `S1b`, or begin `S1b`'s `T2` directly.
+> ⚠️ **Read the sprint plan's TOP banner before the task body.** Three banners are stacked
+> newest-first; the 2026-08-08 post-`S1a` one outranks both the others *and* every task body.
 
-**Model: `opus` / architect** for the reassessment; `S1b`'s own tasks are `sonnet` / coder
-work once scoped.
+**The one correction that matters most:** **`deploy.yml` gets NO `pull_request` trigger** —
+`push: branches: [main]` and `workflow_dispatch` only. T2's body still described one "(plan,
+Task 4)" and is corrected in place. With `T4` in `S2`, deleting `deploy-ai-lab.yml` leaves this
+repo with **zero credentialed `pull_request` jobs for the first time in its history** — that is
+the point of the task. Re-adding the trigger "for T4" undoes the sprint's largest single
+security gain in its first commit.
+
+Also carry forward, per the task body: `destroy-ai-lab` **byte-identical — keeping its `name:`
+key** (it is `workflow_dispatch`-only, can never be a required check, so F18's rule does not
+bind it); the `Register bare account id for log masking` step as the **first step after
+checkout** in every credentialed job; `ruff`/`bandit` as their own uncredentialed `ci.yml` job;
+a committed `.tflint.hcl`.
+
+**Model: `sonnet` / coder.** **Run `/way-of-working:critic-gate` before `/ship`** — this diff is
+entirely `code_paths` and entirely trust-boundary.
 
 ## Open gates and blockers
 
-**HITL Gate: OPEN** — "stop and reassess before `S1b`" is an explicit owner decision point
-named in the sprint plan itself, not a mechanical continuation. The next session should not
-auto-start `S1b`-T2 on the strength of this cursor alone.
+**HITL Gate: NONE OPEN for `T2`.** The "stop and reassess before `S1b`" gate is closed — the
+reassessment was performed, approved, and merged (#71). `T2` is a workflow-file rewrite,
+depends on nothing below, and still ends at `/critic-gate` and `/ship`.
 
-Whether the merged PR's own `tofu-apply` run was subsequently approved/completed is not
-tracked here — it doesn't gate `S1a`'s own Definition of Done, which names only the observed
-pause (satisfied above).
+### ⚠️ The stack is live, and it is not cheap — owner decision open
+
+Measured 2026-08-08. **All 12 resources exist and match config**, evidenced by run
+`31274238499`'s apply reporting `0 added, 0 changed, 0 destroyed` under the CI role. The cost:
+[`opensearch.tf:61-72`](modules/aws-bedrock-rag/opensearch.tf#L61-L72) sets **no
+`standby_replicas`**, so the `VECTORSEARCH` collection takes AWS's default `ENABLED` — the
+~4-OCU redundancy floor, not the 2-OCU dev floor. **AOSS bills that floor regardless of usage**;
+at $0.24/OCU-hour that is roughly **$690/month** against the **$20** guardrail in
+[`variables.tf:34`](environments/ai-lab/variables.tf#L34), on a corpus BR-D20 says is empty.
+*Derived from AWS's published pricing, **not** an observed bill — confirm in Cost Explorer.*
+
+**Recommendation: destroy it.** Not a compromise — BR-D20 says nothing here is precious, and
+`S1b`'s own DoD requires a `destroy → apply → verify` cycle anyway, so the rebuild is work that
+must happen regardless. **Not fired:** `destroy-ai-lab` is `workflow_dispatch` + typed confirm
+phrase + human-watched (~11 min for AOSS; per the `MW` lesson, check *which* step is slow before
+reading elapsed time as stuck). *Worth a small separate change: `standby_replicas = DISABLED`
+roughly halves the floor for a lab needing no redundancy — not yet filed.*
+
+### ⚠️ Destroying changes what an Environment approval means
+
+Since `S1a`-T5 removed `paths:`, **every** merge to `main` runs `tofu-apply`. While the stack is
+up those are `0/0/0` no-ops and approving by reflex is harmless — which is exactly the habit the
+two approvals on #70 and #71 just established. **The moment the stack is destroyed that stops
+being true:** the next merge of anything, including a docs-only handoff PR, plans `12 to add`
+and **rebuilds the whole stack** if approved. **Read `tofu-plan-main`'s summary before
+approving** — a non-zero `total changes:` on a docs-only merge means a rebuild, not a no-op.
 
 `glunk-works/global-bootstrap#7` (org-wide lock-table question) still awaits a response —
 informational, not blocking.
@@ -66,6 +88,6 @@ informational, not blocking.
 ## Pointers
 
 - `docs/hardening_roadmap.md` — reference of record and threat model.
-- `sprints/S1_pipeline_hardening/sprint_plan.md` — read the 2026-08-08 banner first;
-  `S1b`'s task order and its own Definition of Done paragraph are both there.
-- `.ai/archive/MW-next-steps.md` — `MW`'s final cursor, for history queries.
+- `sprints/S1_pipeline_hardening/sprint_plan.md` — **top banner first.** `T4`'s body is retained
+  there verbatim under a do-not-execute header, as the normative spec `S2` inherits.
+- `.ai/archive/S1a-next-steps.md` — `S1a`'s final cursor, for history queries.

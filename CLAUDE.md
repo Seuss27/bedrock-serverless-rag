@@ -36,7 +36,7 @@ Three OpenTofu roots, and the distinction matters for every change:
 > (S0 governance → **ST org transfer** → **MW make-it-work** → S1 pipeline → S2 identity +
 > `bootstrap/` retirement → **S3+S4 merged** data-plane and RAG → S5 Python cleanup → S6 docs;
 > **SD the devcontainer is DEFERRED**, not parallel), and the locked decisions
-> (**BR-D1..BR-D24**). It is also the **threat model**.
+> (**BR-D1..BR-D25**). It is also the **threat model**.
 >
 > Three facts shape every judgement call here. **This repo is PUBLIC.** **`main` IS protected
 > and CI still applies to AWS with no human approval** — S0 landed on 2026-08-05, so the
@@ -333,7 +333,7 @@ mismatch there is not evidence of misconfiguration.
   Read this first.
 - **`.ai/project.yml`** — this repo's parameterization of the working method.
 - **`docs/hardening_roadmap.md`** — reference of record **and threat model**: the finding
-  inventory (**F1–F58**), **BR-D1..BR-D24**, the sprint sequence, **§ 5.1 what BR-D23 cut and
+  inventory (**F1–F58**), **BR-D1..BR-D25**, the sprint sequence, **§ 5.1 what BR-D23 cut and
   the premise that would bring each cut back**, the public-repo rules.
 - **`sprints/*/sprint_plan.md`** — the per-sprint plans: S0, **ST**, **MW**, S1, S2, S3+S4
   (merged), S5, S6, plus **SD** which is **deferred** on a Docker precondition, not parallel.

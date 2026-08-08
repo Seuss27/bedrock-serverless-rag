@@ -2,6 +2,84 @@
 
 # S1 — Pipeline hardening
 
+> **⚠ REASSESSED 2026-08-08 after `S1a` shipped — the pause this plan mandated was taken, and
+> it produced changes. This banner outranks the re-planning banner below it and every task
+> body.** **`S1b` is now FIVE tasks: `T2 → T1 → T3 → T6 → T7`.** Both changes below were
+> measured against the shipped `deploy-ai-lab.yml`, not reasoned from this plan.
+>
+> **First, the question the pause was called to ask is answered NO.** The reassessment was
+> scoped to "is the approval-on-every-merge trade still acceptable now that `paths:` is gone."
+> It is. Measured on `S1a`'s own merge (run `31272226259`): `tofu-plan-main` 32s → `tofu-apply`
+> paused in `waiting` → approved → applied green in 40s. A no-op merge costs one click and
+> about four minutes, and it exercises the gate every single time. **Unchanged, and the "known
+> and accepted consequence" paragraph in T5 stands as written.** *(Do not "fix" this later with
+> a `plan shows 0 changes → skip the apply` short-circuit. It would reduce how often the gate
+> is exercised, which is the opposite of what `S1b` needs while it rewrites the pipeline
+> underneath that gate.)*
+>
+> ## 1. ⚠️ `T4` IS DEFERRED TO `S2` — and it closes nothing on the way out
+>
+> **`T4` is not descoped work; it is work that had stopped paying for itself.** Two measured
+> facts, in the order they matter:
+>
+> - **F16 IS ALREADY CLOSED — by `S1a`-T5, not by T4.** F16 is *"`tofu plan -no-color` dumps
+>   the full plan into a world-readable log."* The shipped file has **no `pull_request`-triggered
+>   plan step at all**, and **all three** plan steps that do exist redirect to `/dev/null` —
+>   `tofu-plan-main` (`deploy-ai-lab.yml:186`) and `tofu-apply` (`:283`) emit the jq
+>   address-and-count summary; `destroy-ai-lab` (`:369`) emits a `grep`-filtered `Plan:`/address
+>   extract. There is no remaining path by which a plan render reaches a log.
+>   **The finding inventory still attributes F16 to `S1-T4`; that row is corrected to `S1a`-T5
+>   in this PR.** So T4's entire remaining product is *PR-time plan visibility* — a convenience,
+>   not a finding.
+> - **T4 would re-open the exposure `T2` is about to close, and `T7` would then weld it to the
+>   merge path.** Exactly **one** credentialed `pull_request` job exists today:
+>   `security-and-linting` (`deploy-ai-lab.yml:104-107`) assumes `secrets.AWS_OIDC_ROLE_ARN` —
+>   the admin-capable deploy role — and `pip install`s from the PR branch while holding it. That
+>   is **F3 read the way `CLAUDE.md` reads it**: arbitrary command execution with
+>   account-admin-capable credentials, available to anyone who can push a branch. **`T2` deletes
+>   it** — `ci.yml` is uncredentialed by construction, so after T2 this repo has **zero
+>   credentialed `pull_request` jobs for the first time in its history.** T4 puts one back, on
+>   the *same* apply-capable role (no plan role exists until `S2`-T0), and T7 then makes it
+>   **required** — which this plan already conceded in T7's own footnote: it *"makes F2
+>   load-bearing for merging."*
+>
+> **Where it lands:** `S2`-T0 mints the read-only plan role and `S2`-T2 narrows the trust policy,
+> **in the same sprint**. `S2`-T2 already assumes a PR plan job exists (its step 1 says "drop
+> S1's `||` fallback", its step 2 verifies "a PR plan job green on the plan role"). Deferring
+> means `S2` **authors** that job once, with the correct role, instead of repointing one written
+> around a fallback. The intake is recorded in `sprints/S2_identity_least_privilege/sprint_plan.md`
+> — per `ST`'s rule that a task moved out of a sprint and not written into where it landed is a
+> task **dropped**.
+>
+> **What is given up, stated plainly rather than minimised:** a `.tf` change gets no plan summary
+> until after merge. BR-D2 is untouched — `tofu-plan-main` plus the `production` Environment *is*
+> the plan-a-human-read control, and it is now proven end to end rather than asserted. The real
+> residual is that the approver can decline a post-merge apply, which leaves `main` describing an
+> unapplied world until the next merge. Mild, self-healing, **accepted**.
+>
+> **One accepted cost evaporates with it:** the Risks bullet *"making `tofu-plan` a required
+> check means a fork PR can never go green"* no longer applies to this sprint — every check
+> `S1b` requires is credential-free.
+>
+> ## 2. ⚠️ `checkov` IS RUN BY `T3` BUT NOT REQUIRED BY `T7`
+>
+> This plan's **own Execution review** says checkov at `directory: .` *"will almost certainly
+> fail the first run"* on F7's missing public-access block and F6's public network policy —
+> **which are `S3`'s findings, not `S1`'s.** T7 would make it required with `bypass_actors: []`.
+> The result is that `S1b` must either close `S3`'s work or write suppressions for it, in-sprint,
+> **or every PR in the repo becomes unmergeable with the fix living outside the PR.** That is the
+> BR-D9 deadlock class, arriving by the same route the `GITLEAKS_LICENSE` warning below caught it.
+>
+> The repo has already made this call twice, on the same reasoning: BR-D23 on `dependency-audit`
+> (*"Run it; do not gate on it"*) and T2's own `python-lint` (*"requiring a check whose config
+> does not exist yet is the S0 deadlock in miniature"*). **Run checkov on every PR from `T3`;
+> add it to `required_checks` in `S3`, in the change that closes the findings it fires on.**
+>
+> **`T7`'s required list is therefore FIVE, not seven** — `tofu-fmt`, `tofu-validate`, `tflint`,
+> `secrets-scan`, `zizmor` — i.e. **six contexts** with `pr-title`. T7's body and acceptance
+> criterion are corrected in place below, because those are copy-pasteable literals and a banner
+> does not save someone who pastes a stale count.
+
 > **⚠ RE-PLANNED 2026-08-08 against live post-`MW` state, then CRITIQUED AND REVISED the same
 > day. This banner outranks the 2026-08-05 banner below it and every task body.** `MW` closed
 > 2026-08-08 and four of this plan's premises died with it.
@@ -28,8 +106,10 @@
 > only thing standing between a merge and an admin-capable apply, and T5 closes it in one
 > reviewable diff over code `MW` proved, months before the rest of the hardening is written.
 >
-> **`S1b` — the rewrite. `T2 → T1 → T4 → T3 → T6 → T7`.** Closes F15, F16, F19, F21 and the
-> rest of F18. **`T1` now runs AFTER `T2`, reversing the first draft** — `T1` SHA-pins actions,
+> **`S1b` — the rewrite. ~~`T2 → T1 → T4 → T3 → T6 → T7`~~ `T2 → T1 → T3 → T6 → T7`.** *(`T4`
+> deferred to `S2` by the 2026-08-08 post-`S1a` reassessment — top banner.)* Closes F15,
+> ~~F16,~~ F19, F21 and the rest of F18. **F16 was already closed by `S1a`-T5**, not by T4.
+> **`T1` now runs AFTER `T2`, reversing the first draft** — `T1` SHA-pins actions,
 > and `T2` *deletes the file those actions live in*. Pinning `deploy-ai-lab.yml` and then
 > deleting it is wasted work whose only product is a merge conflict; `T2` may simply author the
 > new files pre-pinned and leave `T1` to verify. `T7` is still last (requiring a check before
@@ -238,9 +318,12 @@ admin-capable apply until S2 lands.
   output from `environments/ai-lab` **is** a description of reality, which is precisely what
   makes T4's and T5's summaries worth reading and T5's approval gate worth pausing for. This
   bullet was the single largest argument for sequencing `MW` ahead of S1; it has been paid.
-- Making `tofu-plan` a required check means **a fork PR can never go green** (forks get no
+- ~~Making `tofu-plan` a required check means **a fork PR can never go green** (forks get no
   OIDC token). Accepted — the alternative is a credentialed job reachable from fork-authored
-  code.
+  code.~~ **MOOT for `S1b` as of 2026-08-08** — `T4` is deferred to `S2`, so no required check
+  here holds a credential and every one of them is satisfiable from a fork. **The trade is not
+  resolved, only postponed**: it re-arms in `S2` the moment `tofu-plan` becomes required there,
+  and the reasoning above is the reason it stays accepted when it does.
 
 ---
 
@@ -302,11 +385,22 @@ admin-capable apply until S2 lands.
       `gates.green` and this repo still has no `pyproject.toml` or ruff config — S5 owns the
       toolchain, and requiring a check whose config does not exist yet is the S0 deadlock in
       miniature. Run it, do not gate on it.
-    **`deploy.yml`** — `on: pull_request:` (plan, Task 4), `on: push: branches: [main]`
-    (plan + apply, Task 5), **and `on: workflow_dispatch:` (destroy — see below)**. No
-    `paths:` filter on the `pull_request` trigger, for the same reason.
+    **`deploy.yml`** — ~~`on: pull_request:` (plan, Task 4),~~ `on: push: branches: [main]`
+    (plan + apply, Task 5) **and `on: workflow_dispatch:` (destroy — see below)**.
+    ~~No `paths:` filter on the `pull_request` trigger, for the same reason.~~
     `permissions: id-token: write, contents: read` at the workflow level.
     Nothing in either file may use `pull_request_target`.
+    > 🛑 **CORRECTED 2026-08-08 by the post-`S1a` reassessment, and this is the line the whole
+    > reshape turns on. `deploy.yml` GETS NO `pull_request` TRIGGER.** With `T4` deferred to
+    > `S2`, nothing in `deploy.yml` runs on a PR — so this file's two triggers are `push` and
+    > `workflow_dispatch`, full stop. **That is the point of doing `T2` at all this sprint:**
+    > `ci.yml` is uncredentialed by construction, so the moment `deploy-ai-lab.yml` is deleted
+    > this repo has **zero credentialed `pull_request` jobs for the first time in its history**
+    > — retiring the `security-and-linting` surface that hands an admin-capable role to a
+    > `pip install` from a PR branch. Adding the trigger back "for T4" while T4 lives in `S2`
+    > un-does the sprint's largest single security gain in its first task. **`S2` adds the
+    > trigger together with the read-only plan role that makes it safe** — the two arrive in the
+    > same change, or neither does.
 
     ⚠️ **Two live controls this plan predates. Carrying them is a requirement of this task,
     not a nicety — both arrived with `MW` and both are proven.**
@@ -315,22 +409,43 @@ admin-capable apply until S2 lands.
       `if:`**, never in a `run:`), and its `github.ref` check. **Do not add
       `environment: production` to it** — planning decision 2, see the banner. This is the
       job `MW` used to prove the destroy half of BR-D20's acceptance test.
-    - **`Register bare account id for log masking`** — present in **all three** credentialed
-      jobs today. It derives the bare 12-digit account id from the role ARN and registers it
+    - **`Register bare account id for log masking`** — present in ~~all three~~ **all four**
+      credentialed
+      jobs today *(count corrected 2026-08-08: `S1a`-T5 split the fused job, so the live file
+      carries it in `security-and-linting`, `tofu-plan-main`, `tofu-apply` and
+      `destroy-ai-lab` — `security-and-linting` is the one `T2` deletes)*. It derives the bare
+      12-digit account id from the role ARN and registers it
       as a log mask, so BR-D4 holds even when a tool prints it incidentally. **Every
       credentialed job in `deploy.yml` keeps it, and it must stay the first step after
       checkout** — a mask registered late does not retroactively scrub earlier output.
       ⚠️ **It must derive the account id from the SAME expression that job passes to
-      `role-to-assume` — not from a hardcoded `secrets.AWS_OIDC_ROLE_ARN`.** T4's plan job
+      `role-to-assume` — not from a hardcoded `secrets.AWS_OIDC_ROLE_ARN`.** ~~T4's plan job
       assumes `secrets.AWS_PLAN_ROLE_ARN || secrets.AWS_OIDC_ROLE_ARN`; the day S2-T2 creates
-      the plan-role secret, a mask still pinned to the apply role masks **the wrong account**.
+      the plan-role secret, a mask still pinned to the apply role masks **the wrong account**.~~
+      **Rule unchanged; its example moved with `T4` (2026-08-08).** No job `T2` writes uses the
+      `||` fallback any more — `tofu-plan-main` already carries the correct shape at
+      `deploy-ai-lab.yml:154-164`, and **carrying that job across verbatim satisfies this
+      bullet.** The hazard the struck example described is now **`S2`'s to avoid**, at the
+      moment it creates the plan job *and* the plan-role secret: a mask still pinned to the
+      apply role would mask **the wrong account**.
       There is no error and no failing check — the account id simply starts appearing in a
       world-readable log on a public repo. Keep the expression in one job-level `env:` var and
       reference it from both places.
   - **Target Files:** `.github/workflows/ci.yml`, `.github/workflows/deploy.yml`,
     `.github/workflows/deploy-ai-lab.yml` (deleted), `.tflint.hcl`
   - **Acceptance Criteria:** `deploy-ai-lab.yml` no longer exists. No workflow file contains
-    a `paths:` key. No job in `ci.yml` or `deploy.yml` has a `name:` key. Every job id is
+    a `paths:` key. ~~No job in `ci.yml` or `deploy.yml` has a `name:` key.~~ **Corrected
+    2026-08-08 — as written this contradicts the "carry `destroy-ai-lab` byte-identical"
+    requirement above, and one of the two had to yield.** The live `destroy-ai-lab` job DOES
+    carry `name: Destroy AI Lab Infrastructure (manual)` (`deploy-ai-lab.yml:323`), which is
+    **correct and stays**: F18's rule is that a `name:` override silently un-requires a *gated*
+    job by renaming its check run, and `destroy-ai-lab` is `workflow_dispatch`-only — it can
+    never be a required check, so the rule does not bind it and the human-readable name is worth
+    having in the dispatch UI. **Criterion, restated: no job that is or could become a required
+    check carries a `name:` key** — i.e. every job in `ci.yml`, and `tofu-plan-main`/`tofu-apply`
+    in `deploy.yml`. `destroy-ai-lab` is the one deliberate exception; **`T7` must not add it to
+    `required_checks`.** `deploy.yml` has **no `pull_request` trigger** (see the corrected
+    trigger list above). Every job id is
     lower-case-hyphenated and unique across both files. `tflint --recursive` exits 0 locally.
     **`deploy.yml` contains a `destroy-ai-lab` job whose `if:` is byte-identical to the
     pre-split version — diff it, do not eyeball it.** Every credentialed job in `deploy.yml`
@@ -338,7 +453,12 @@ admin-capable apply until S2 lands.
     on a PR.
 
 - **Task 3: Full-coverage IaC and workflow scanning**
-  - **Description:** Add four scanner jobs to `ci.yml`. The coverage gap is the finding
+  - **Description:** Add ~~four~~ **three** scanner jobs to `ci.yml` — `checkov`,
+    `secrets-scan`, `zizmor`. *(The count said four until 2026-08-08 and contradicted this
+    task's own closing line; `iac-diff-guard` was CUT by BR-D23 and its replacement is already
+    shipped in the PR template. **Separately: `checkov` is RUN here but NOT made required by
+    `T7`** — it fires on `S3`'s F6/F7, so `S3` requires it in the change that closes them. See
+    the top banner.)* The coverage gap is the finding
     (F19): Checkov currently scans `modules/` only, so `bootstrap/` — which holds F1 and F2,
     the two worst findings in the repo — has **never been scanned**.
     - `checkov` — `directory: .` (the whole repo, not `modules/`), `framework: terraform`,
@@ -392,12 +512,25 @@ admin-capable apply until S2 lands.
   - **Target Files:** `.github/workflows/ci.yml`, `.gitleaks.toml`, `.checkov.yml` (only if
     a suppression is genuinely needed)
   - **Acceptance Criteria:** Checkov's log shows it scanned files under `bootstrap/`,
-    `modules/` **and** `environments/`. All four jobs report on this sprint's PR. If Checkov
+    `modules/` **and** `environments/`. ~~All four jobs~~ **All three jobs** report on this
+    sprint's PR — **reporting, not gating: only `secrets-scan` and `zizmor` of these three
+    become required checks in `T7`.** If Checkov
     fails on a real finding, **do not suppress it** — record it as a new `F` row in
     `docs/hardening_roadmap.md` mapped to the sprint that owns it (most will already be
     F6–F12, owned by S3) and add a justified `.checkov.yml` skip citing that row.
 
 - **Task 4: PR plan — read-only, summarized, never dumped**
+  - > ## 🛑 DEFERRED TO `S2` (2026-08-08 reassessment — see the top banner). DO NOT EXECUTE FROM HERE.
+    >
+    > **The body below is retained verbatim as the normative specification `S2` inherits**, in
+    > the same shape `ST` Task 2b is retained for `S2`-T0: the design is correct, its
+    > *precondition* is not met yet. Executing it in `S1b` would put an **apply-capable**
+    > credential back on a `pull_request` trigger — the exact surface `T2` deletes two tasks
+    > earlier — because `secrets.AWS_PLAN_ROLE_ARN` and the role behind it do not exist until
+    > `S2`-T0. **F16 is already closed by `S1a`-T5**, so nothing open is left uncovered by
+    > waiting. When `S2` runs this, the `secrets.AWS_PLAN_ROLE_ARN || secrets.AWS_OIDC_ROLE_ARN`
+    > fallback in step 2 is **written as the plan role outright** — the fallback existed only to
+    > let S1 ship before the role did, and that reason is gone.
   - **Description:** In `deploy.yml`, a `tofu-plan` job on `pull_request`:
     1. `actions/checkout` with `persist-credentials: false`
     2. `aws-actions/configure-aws-credentials` with
@@ -538,9 +671,14 @@ admin-capable apply until S2 lands.
 - **Task 7: Update the drift detector and the schema**
   - **Description:** Append this sprint's new gating checks to the ruleset, to
     `ruleset.required_checks` in `.ai/project.yml`, and to the check list inside
-    `.github/workflows/ruleset-drift.yml` — **all three in this PR** (BR-D9). The checks
+    `.github/workflows/ruleset-drift.yml` — **all three in this PR** (BR-D9). ~~The checks
     added by S1 are: `tofu-fmt`, `tofu-validate`, `tflint`, `checkov`, `secrets-scan`,
-    `zizmor`, `tofu-plan`. Append to the existing ruleset with a `PUT`, never replace it:
+    `zizmor`, `tofu-plan`.~~ **Corrected 2026-08-08 by the post-`S1a` reassessment — the checks
+    added by `S1b` are FIVE:** `tofu-fmt`, `tofu-validate`, `tflint`, `secrets-scan`, `zizmor`.
+    **`tofu-plan` is not among them because `T4` is deferred to `S2`**, and **`checkov` is not
+    among them because it fires on `S3`'s findings** — `S3` adds it in the change that closes
+    them. Both are in the top banner; the literal list is corrected here because this one gets
+    pasted. Append to the existing ruleset with a `PUT`, never replace it:
     ```bash
     gh api repos/glunk-works/bedrock-serverless-rag/rulesets --jq '.[].id'
     gh api -X PUT repos/glunk-works/bedrock-serverless-rag/rulesets/<id> --input updated.json
@@ -551,7 +689,9 @@ admin-capable apply until S2 lands.
     PR body, and a required check that a fork or a bot cannot satisfy strands PRs.
   - **Target Files:** `.ai/project.yml`, `.github/workflows/ruleset-drift.yml`
   - **Acceptance Criteria:** `gh api repos/glunk-works/bedrock-serverless-rag/rules/branches/main`
-    lists 8 contexts (`pr-title` + the seven above) and still all four rule types.
+    lists ~~8~~ **6** contexts (`pr-title` + the ~~seven~~ **five** above) and still all four
+    rule types. *(Count corrected 2026-08-08 with the list above — `tofu-plan` deferred to `S2`,
+    `checkov` to `S3`.)*
     ~~`.ai/project.yml` lists the same 8 in the same order.~~ **Corrected 2026-08-08 — the
     three lists must be equal as SETS, not as ordered sequences.** GitHub returns ruleset
     contexts in its own order and does not preserve the order they were `PUT` in, so an
@@ -560,8 +700,14 @@ admin-capable apply until S2 lands.
     `diff <(… | jq -r '.[]' | sort) <(… | sort)`. `gh workflow run ruleset-drift.yml` passes.
     **Diff them, do not eyeball them** — that part stands.
 
-    ⚠️ **One consequence of this task to record rather than discover: it makes F2 load-bearing
-    for merging.** `tofu-plan` runs on `pull_request` holding **apply-capable** credentials
+    ✅ **VOID as of the 2026-08-08 reassessment — and it is void because the reshape was made
+    to void it, so read it as the reasoning rather than as a live risk.** With `T4` deferred to
+    `S2`, no required check runs on `pull_request` holding credentials of any kind, so F2 is
+    **not** load-bearing for merging in `S1b`. The paragraph below is the argument that moved
+    `T4`; it re-arms verbatim in `S2` **unless** `S2`-T2's narrowed trust policy lands in or
+    before the same change that makes `tofu-plan` required. Keep it with `T4`.
+    ~~⚠️ **One consequence of this task to record rather than discover: it makes F2 load-bearing
+    for merging.**~~ `tofu-plan` runs on `pull_request` holding **apply-capable** credentials
     (no plan role exists until S2-T0), and F2 — the trust policy's trailing `:*` admitting
     `:pull_request` — stays open until S2-T2. Making that job **required** does not create new
     exposure, since it already runs on every PR; it makes the exposure **impossible to merge
@@ -596,7 +742,8 @@ replacing it, so `MW`'s proof still describes the shipped file, and the observed
 stronger evidence than a destroy/rebuild would be for this specific change. **Then stop and
 reassess before `S1b`.**
 
-**`S1b` (T2, T1, T4, T3, T6, T7) is DONE when** everything in the paragraph above this one
+**`S1b` (~~T2, T1, T4, T3, T6, T7~~ **T2, T1, T3, T6, T7** — `T4` deferred to `S2`,
+2026-08-08 reassessment) is DONE when** everything in the paragraph above this one
 holds, **plus `MW`'s acceptance test has been re-run ONCE at the end, against the final
 shape:** dispatch `destroy-ai-lab` with the confirm phrase, let it complete, then merge a
 trivial change to `main` and take the `tofu-apply` Environment approval — the full
@@ -604,7 +751,8 @@ trivial change to `main` and take the `tofu-apply` Environment approval — the 
 optional polish:** T2 **deletes the workflow file `MW` proved**, so from that commit until this
 run, `MW`'s evidence describes a file that no longer exists and **nothing** demonstrates the
 shipped pipeline can stand the system up. It runs last because the end state — split files,
-Environment gate, saved-plan apply, seven required checks — is the only configuration that
+Environment gate, saved-plan apply, ~~seven~~ **five** required checks *(corrected 2026-08-08 —
+`tofu-plan` deferred to `S2`, `checkov` to `S3`; see the top banner)* — is the only configuration that
 exercises the gate *and* the split together, which is where a logic error would hide.
 *Expect the AOSS collection alone to take ~11 minutes on the rebuild; per the `MW` lesson,
 **check which step is actually slow before reading elapsed time as stuck** — that misread
@@ -627,7 +775,14 @@ every task here touches `code_paths`.
   and S2, a human approval is the **only** control between a merge and an admin-capable
   apply. Stated in Security Considerations so no one reads the split-role structure and
   assumes S2 already happened.
-- *Task 4's plan job still holds credentials on a `pull_request` trigger.* Yes, and until
+- *Task 4's plan job still holds credentials on a `pull_request` trigger.* **⚠️ This objection
+  was ACCEPTED rather than answered, 2026-08-08 — it is why `T4` moved to `S2`.** The bullet
+  below "bounds" the exposure and then keeps it; the reassessment found the bound was
+  unnecessary, because `T2` removes the last credentialed PR job anyway and `T4` was the only
+  thing putting one back. **It is retained unstruck because every word of it re-arms in `S2`,
+  where the job actually gets built** — and there the second sentence finally becomes false in
+  the right direction: the credentials will be the *read-only plan role*, not the mutating one.
+  *(Original:)* Yes, and until
   S2-T2 adopts the upstream read-only plan role, they are the mutating credentials. Two things bound it: forks get no OIDC token at
   all, so this is reachable only by someone who can already push a branch here; and
   `-lock=false` plus plan-only means no state write. The `AWS_PLAN_ROLE_ARN ||` fallback is
@@ -663,8 +818,11 @@ every task here touches `code_paths`.
 - *Ordering inside the sprint.* ~~Task 2 deletes the file Tasks 4 and 5 write into, so it must
   land first;~~ Task 7 must land **last**, because requiring a check before its job exists is
   the S0 deadlock again, one sprint later. ~~Tasks 1, 3, 6 are order-independent.~~
-  > **⚠️ REVISED TWICE ON 2026-08-08. Final: the sprint is SPLIT — `S1a` = T5 alone, then
-  > `S1b` = T2 → T1 → T4 → T3 → T6 → T7.** *(The intermediate revision read
+  > **⚠️ REVISED THREE TIMES ON 2026-08-08. Final: the sprint is SPLIT — `S1a` = T5 alone,
+  > then `S1b` = ~~T2 → T1 → T4 → T3 → T6 → T7~~ **T2 → T1 → T3 → T6 → T7**.** *(The third
+  > revision is the post-`S1a` reassessment in the top banner, and unlike the first two it was
+  > found by **execution** rather than by critique: shipping `S1a` is what made it visible that
+  > `T2` leaves the repo with zero credentialed `pull_request` jobs and `T4` puts one back.)* *(The intermediate revision read
   > "T5 → T1 → T2 → T4 → T3 → T6 → T7" as one sprint. Two defects, both found by critique
   > rather than by execution: **(a)** it put **T1 before T2**, i.e. SHA-pinned the actions in
   > `deploy-ai-lab.yml` and then had T2 delete that very file — wasted work whose only product
@@ -688,7 +846,7 @@ every task here touches `code_paths`.
 - *`tofu-validate` covering `bootstrap/` looks like it contradicts BR-D1.* It does not.
   BR-D1 says CI never **applies** `bootstrap/`. Validating and scanning it is the opposite
   of a violation — F1 and F2 have gone unscanned precisely because nothing looked.
-- *`strict_required_status_checks_policy` (from S0) plus seven new checks means more
+- *`strict_required_status_checks_policy` (from S0) plus ~~seven~~ **five** new checks means more
   rebasing.* Accepted; one maintainer, near-zero cost.
 
 **Execution**

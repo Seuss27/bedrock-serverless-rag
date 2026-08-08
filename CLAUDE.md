@@ -39,13 +39,18 @@ Three OpenTofu roots, and the distinction matters for every change:
 > (**BR-D1..BR-D25**). It is also the **threat model**.
 >
 > Three facts shape every judgement call here. **This repo is PUBLIC.** **`main` IS protected
-> and CI still applies to AWS with no human approval** — S0 landed on 2026-08-05, so the
+> AND CI can no longer apply to AWS without a human approval** — S0 landed 2026-08-05, so the
 > `protected-integration-branches` ruleset is live and `pr-title` is a required check that
-> genuinely blocks a merge; do not assume otherwise. **S1 has not landed**, so the
-> `-auto-approve` path in `deploy-ai-lab.yml` is still ungated — that half is unchanged.
-> *(Until 2026-08-06 this paragraph read "`main` has no branch protection … assume nothing in
-> `.github/workflows/` is blocking anything." Both halves were once true; only the second
-> still is.)* And ~~**the committed IaC does not describe the deployed system**: the resources
+> genuinely blocks a merge; and **`S1a` landed 2026-08-08** (PR #69), so `tofu-apply` sits
+> behind the `production` Environment with a required reviewer. **Do not assume either is
+> absent — and do not assume more than they give you.** The gate is *one human click*, and the
+> role it releases is still F1's admin-capable one until `S2`. ~~**S1 has not landed**, so the
+> `-auto-approve` path in `deploy-ai-lab.yml` is still ungated — that half is unchanged.~~
+> *(This paragraph has now been wrong in **both** directions. Until 2026-08-06 it read "`main`
+> has no branch protection … assume nothing in `.github/workflows/` is blocking anything";
+> until 2026-08-08 it still said the apply path was ungated, three days after the ruleset
+> claim beside it had been corrected for the identical reason. **Both halves are now true and
+> measured** — the pause was observed on run `31272226259`, not read off the YAML.)* And ~~**the committed IaC does not describe the deployed system**: the resources
 > exist in AWS but are absent from the state CI reads~~ **corrected 2026-08-07 by `MW`-T5: that
 > split brain is reconciled.** A from-scratch `environments/ai-lab` apply under admin SSO
 > — by teardown and rebuild, never by import (BR-D19, reversed by BR-D20: the corpus is
@@ -89,10 +94,16 @@ if no gate existed on a repo that has one.
   backend** (`.terraform/terraform.tfstate` still names it, so init reaches for credentials
   and dies on IMDS). This is a local-workstation wrinkle only — CI checks out clean. Run
   `tofu init -backend=false -reconfigure`, or validate from a clean copy.
-- **No infra change reaches AWS without a visible plan and a human approval** (BR-D2). This
-  is currently **violated by `deploy-ai-lab.yml`**, which runs `tofu apply -auto-approve` on
-  every push to `main` with no environment gate — S1-T5 fixes it. Do not add a second
-  auto-apply path in the meantime.
+- **No infra change reaches AWS without a visible plan and a human approval** (BR-D2).
+  ~~This is currently **violated by `deploy-ai-lab.yml`**, which runs `tofu apply -auto-approve`
+  on every push to `main` with no environment gate — S1-T5 fixes it.~~ **✅ HELD as of
+  2026-08-08 (`S1a`-T5, PR #69):** `tofu-plan-main` publishes the summary, `tofu-apply` is
+  gated on the `production` Environment, and it applies **the saved plan file** rather than
+  re-planning. **`-auto-approve` is permitted in exactly two places and nowhere else** —
+  `tofu-apply`, because the Environment approval already happened; and `destroy-ai-lab`, whose
+  approval is the typed confirm phrase plus a human watching the run (BR-D25). **Do not add a
+  third**, and do not add any new path that reaches AWS without one of those two forms of
+  approval in front of it.
 - **`tofu plan` output is summarized, never dumped** (BR-D4). This repo is public and plan
   output renders the account id, bucket names, role ARNs, and the AOSS collection endpoint
   at runtime even though none are committed. `-no-color` into a world-readable log is a
@@ -153,11 +164,20 @@ if no gate existed on a repo that has one.
 - Use `persist-credentials: false` on `actions/checkout` unless a later step provably needs
   the token on disk.
 - **Required checks match by check-run name = job id**, so never add a `name:` override to a
-  gated job — it renames the check run and silently un-requires the gate. `deploy-ai-lab.yml`
-  currently has `name:` on both jobs; they must be removed *before* those jobs are required.
-- **A required check on a path-filtered workflow deadlocks.** `deploy-ai-lab.yml` filters on
-  `paths:` today; a PR touching only `docs/` would leave the required check pending forever
-  and the PR unmergeable. The filter comes off in the same change that makes a job required.
+  gated job — it renames the check run and silently un-requires the gate. ~~`deploy-ai-lab.yml`
+  currently has `name:` on both jobs; they must be removed *before* those jobs are required.~~
+  **Done 2026-08-08 by `S1a`-T5.** One `name:` survives, on `destroy-ai-lab`, and it is
+  **correct**: that job is `workflow_dispatch`-only and can never be a required check, so the
+  rule does not bind it. **The rule binds the job's eligibility, not the file** — apply it to
+  any job that is or could become required.
+- **A required check on a path-filtered workflow deadlocks** — a PR touching only `docs/` would
+  leave it pending forever and the PR unmergeable. ~~`deploy-ai-lab.yml` filters on `paths:`
+  today; the filter comes off in the same change that makes a job required.~~ **Removed
+  2026-08-08 by `S1a`-T5, and note the live consequence rather than re-deriving it:
+  EVERY merge to `main` — docs-only ones included — now runs `tofu-plan-main` + `tofu-apply`
+  and queues an Environment approval.** That is deliberate and accepted: it exercises the gate
+  on every merge instead of once at the end, and a no-op apply costs about a minute. **Do not
+  "optimize" it back** with a `paths:` filter or a skip-if-no-changes short-circuit.
 - Fork PRs get no secrets, and that is the correct outcome — see the trigger rule above.
 - Grant the **narrowest `permissions:`** that works and delete unused ones.
 - **Secrets and identity never reach a workflow log.** No `aws sts get-caller-identity`

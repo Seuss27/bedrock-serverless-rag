@@ -47,6 +47,47 @@
 > not a *hardened* one. Nothing was secured; something was removed. Task 0 re-creates all three
 > at once, which is the moment every one of these findings re-arms simultaneously.
 
+> **📥 ARRIVED FROM `S1` 2026-08-08 (post-`S1a` reassessment): `S1`-T4, the PR-triggered
+> `tofu-plan` job. It is now THIS sprint's to build, and it belongs to Task 2.** Read
+> `sprints/S1_pipeline_hardening/sprint_plan.md` Task 4 — its body is **retained verbatim there
+> as the normative spec**, in the same shape `ST` Task 2b is retained for Task 0 here. Do not
+> re-derive it.
+>
+> **Why it moved, in one line:** `S1`-T2 leaves this repo with **zero credentialed
+> `pull_request` jobs for the first time in its history**, and T4 as written would put an
+> **apply-capable** role back on that trigger, because no plan role exists until **Task 0 of
+> this sprint**. Nothing open was left uncovered by waiting — **F16 was already closed by
+> `S1a`-T5**, so T4's only remaining product was PR-time plan visibility.
+>
+> **⚠️ Three things this changes in Task 2 below, and the third is a trap.**
+> 1. Task 2 step 1 says *"Drop S1's `|| vars.AWS_OIDC_ROLE_ARN` fallback in `deploy.yml`."*
+>    **There is no fallback to drop — there is no `tofu-plan` job at all.** Step 1 **creates**
+>    it, pointed at the plan role outright. The fallback shape existed only to let `S1` ship
+>    before the role did; that reason expired with this move.
+> 2. Task 2 step 2 says *"Verify: a PR plan job green on the plan role."* Unchanged and now
+>    **more** load-bearing — it is that job's **first ever** run, not a re-point of a proven one.
+> 3. **`tofu-plan` becomes a required check HERE, not in `S1`-T7** (whose list is corrected to
+>    five checks). ⚠️ **Requiring it re-arms F2 as load-bearing for merging** — a credentialed
+>    `pull_request` job that no PR can merge without. **It must therefore land in or after the
+>    change that narrows the trust policy, never before it.** `S1`-T7's now-void footnote holds
+>    the full argument; it was written for this sprint without knowing it.
+>    ⚠️ **BR-D9 makes that THREE artifacts in one change, and Task 2 currently carries none of
+>    them.** Its Target Files are `bootstrap/oidc-setup.tf`, `bootstrap/state-backend.tf` and
+>    `.github/workflows/deploy.yml`; requiring a check also needs **the live ruleset**
+>    (`gh api -X PUT …/rulesets/<id>` — read it first and edit it, a partial `PUT` silently
+>    drops the rules it omits), **`ruleset.required_checks` in `.ai/project.yml`**, and the
+>    check list inside **`.github/workflows/ruleset-drift.yml`**. Add all three to Task 2's
+>    Target Files and an equal-as-sets diff of the three lists to its Acceptance Criteria.
+>    **Order within the task: create the job → observe it green on a real PR under the plan
+>    role → only then require it.** Requiring a check before its job has ever reported is the
+>    S0 deadlock, and `S1`-T7 exists as the worked example of getting that order right.
+>
+> *(Unrelated but adjacent: Task 2's `vars.AWS_OIDC_ROLE_ARN` / `vars.AWS_PLAN_ROLE_ARN` are
+> **dead syntax** — `MW`-T6's BR-D21 correction moved every one of this repo's four values to
+> `secrets.*`, and `gh variable list` now returns nothing. Read them as `secrets.*`. Not
+> rewritten in the body here because that correction is owed across this whole file, not just
+> the lines this intake touches.)*
+
 **Sprint Goal:** This repo ends the sprint owning its **workload and nothing else**. No OIDC
 provider, no CI role, no state bucket — and state confidentiality that does not depend on who
 can read the bucket.

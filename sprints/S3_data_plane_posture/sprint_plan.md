@@ -25,6 +25,27 @@
 > any acceptance criterion below ships a variable `default = false`, it contradicts its own task
 > body and would re-wedge `tofu destroy` — the criterion is wrong, not the body.
 
+> **📥 ARRIVED FROM `S1` 2026-08-08 (post-`S1a` reassessment): making `checkov` a REQUIRED
+> check is now this sprint's, and it belongs to whichever task closes F6 and F7 — land it in
+> the SAME change, per BR-D9.** `S1`-T3 still *adds* the job and runs it at `directory: .` on
+> every PR; what moved here is only the **gating**.
+>
+> **Why it moved:** `S1`'s own Execution review says checkov at `directory: .` *"will almost
+> certainly fail the first run"* — on **F7's missing public-access block and F6's public network
+> policy, which are this sprint's findings.** Requiring it in `S1`-T7 with `bypass_actors: []`
+> would mean `S1b` either closes `S3`'s work or writes suppressions for it, **or every PR in the
+> repo becomes unmergeable with the fix living outside the PR** — the BR-D9 deadlock class.
+> Same call BR-D23 made for `dependency-audit` and `S1`-T2 made for `python-lint`: run it, gate
+> on it once it can pass. **Recorded here rather than left in `S1` because a requirement moved
+> out of a sprint and not written into where it landed is a requirement dropped** (`ST`'s rule).
+>
+> **⚠️ BR-D9 means THREE artifacts in that one change, not one:** the live ruleset
+> (`gh api -X PUT …/rulesets/<id>` — read it first and edit it; a partial `PUT` drops the rules
+> it omits), **`ruleset.required_checks` in `.ai/project.yml`**, and the check list inside
+> **`.github/workflows/ruleset-drift.yml`**. Add `checkov` to all three, and add all three to
+> that task's Target Files — none of them appear in any task below today. Do **not** gate on
+> checkov before the run is observed green on a real PR.
+
 **Sprint Goal:** Close the storage and network gaps around the document corpus and the
 vector store, and make the IaC describe its own names instead of repeating them as string
 literals.

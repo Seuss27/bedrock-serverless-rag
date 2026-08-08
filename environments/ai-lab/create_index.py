@@ -17,7 +17,7 @@ region = os.getenv("TF_VAR_aws_region", "us-east-1")
 host = os.getenv("OPENSEARCH_ENDPOINT") 
 if host:
     host = host.replace("https://", "") # opensearchpy expects the raw host without the scheme
-index_name = "personal-rag-index"
+index_name = os.getenv("VECTOR_INDEX_NAME", "personal-rag-index")
 
 # 2. Authenticate using your active AWS CLI credentials
 session = boto3.Session()

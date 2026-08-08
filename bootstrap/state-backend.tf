@@ -106,6 +106,15 @@ resource "aws_iam_role_policy" "state_access_policy" {
           # CI does for bedrock_kb_role on every plan. It was granted out-of-band and existed
           # only in live AWS until this line; committing it makes the plan clean (F50).
           "iam:ListAttachedRolePolicies",
+          # MW-T6, measured from the same real destroy as aoss:DeleteAccessPolicy above,
+          # one call later: the AWS provider's aws_iam_role delete path calls
+          # ListInstanceProfilesForRole first (checking for attached instance profiles
+          # before deleting the role), unconditionally, even though this module never
+          # attaches one. AccessDeniedException against personal-bedrock-kb-execution-role,
+          # run 31260054651 -- everything else in the destroy graph (the AOSS collection,
+          # both security policies, the access policy) had already torn down cleanly by
+          # this point; the KB execution role was the last resource standing.
+          "iam:ListInstanceProfilesForRole",
           "aoss:GetSecurityPolicy",
           "aoss:ListSecurityPolicies",
           "aoss:BatchGetCollection",

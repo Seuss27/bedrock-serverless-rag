@@ -36,7 +36,7 @@ Three OpenTofu roots, and the distinction matters for every change:
 > (S0 governance → **ST org transfer** → **MW make-it-work** → S1 pipeline → S2 identity +
 > `bootstrap/` retirement → **S3+S4 merged** data-plane and RAG → S5 Python cleanup → S6 docs;
 > **SD the devcontainer is DEFERRED**, not parallel), and the locked decisions
-> (**BR-D1..BR-D25**). It is also the **threat model**.
+> (**BR-D1..BR-D26**). It is also the **threat model**.
 >
 > Three facts shape every judgement call here. **This repo is PUBLIC.** **`main` IS protected
 > AND CI can no longer apply to AWS without a human approval** — S0 landed 2026-08-05, so the
@@ -55,16 +55,22 @@ Three OpenTofu roots, and the distinction matters for every change:
 > split brain is reconciled.** A from-scratch `environments/ai-lab` apply under admin SSO
 > — by teardown and rebuild, never by import (BR-D19, reversed by BR-D20: the corpus is
 > empty, so importing would be slower, riskier, and would freeze the current bad resource
-> names into the configuration) — put every declared resource into state. **What is still
-> true, and is the harder half:** proven *permissions* are not a proven *pipeline* —
-> `state_access_policy` now holds the widened verb set live (F55, closed 2026-08-07,
-> confirmed by a `bootstrap/` apply reporting exactly one resource changed) — and
-> **no CI apply has ever succeeded** (F39/F51 — every
-> push-to-`main` run remains `failure`; the historically-cited run `26788807269` is from
-> 2026-06-01 and is illustrative, not current evidence) — `MW`-T6 is what proves a CI-driven
-> `destroy → apply` cycle, not `MW`-T5. Treat `tofu plan` output as trustworthy for
-> `environments/ai-lab` **locally, under admin SSO** — CI's own plan step currently fails
-> before it gets that far, on an unrelated missing-variable gap (`.ai/next-steps.md`).
+> names into the configuration) — put every declared resource into state. ~~**What is still
+> true, and is the harder half:** proven *permissions* are not a proven *pipeline* … and
+> **no CI apply has ever succeeded** (F39/F51 — every push-to-`main` run remains `failure`)
+> … Treat `tofu plan` output as trustworthy for `environments/ai-lab` **locally, under admin
+> SSO** — CI's own plan step currently fails before it gets that far, on an unrelated
+> missing-variable gap.~~
+> **✅ ALL OF THAT IS SPENT — corrected 2026-08-08, and it had gone stale in three separate
+> ways at once.** `MW`-T6 proved the CI-driven cycle (**F39 and F51 both closed**): a CI
+> apply built all 12 resources from scratch, and `destroy-ai-lab` has since torn all 12 down
+> in a single clean pass (run `31274829358`). `tofu-plan-main` now succeeds in CI on every
+> push to `main`, so the missing-variable gap is gone too and **CI plan output is as
+> trustworthy as a local one**. `state_access_policy` still holds `MW`-T5's widened verb set
+> (F55, closed 2026-08-07) until `S2`-T2 deletes the whole resource.
+> **What replaces it as the harder half:** a *working* pipeline is not a *least-privileged*
+> one. The role CI applies with is still F1's escalation-capable role, and until `S2` retires
+> it the `production` Environment approval is the only control in front of it.
 
 ## The working method (owned elsewhere — do not restate it here)
 
@@ -213,7 +219,13 @@ and the RAG corpus is empty. So: prefer **rebuilding correctly over migrating ca
 let a resource be replaced rather than contorting a change to avoid it, and never let a
 data-preservation caution shape a decision — there is no data. A clean
 **`destroy` → `apply` → verify** cycle is a *functional requirement* and the acceptance test
-for infrastructure work; the project currently **fails** it (F51).
+for infrastructure work; ~~the project currently **fails** it (F51)~~ **the project PASSES it as
+of 2026-08-08 — `MW`-T6 closed F51 with a full CI-driven cycle, and a later `destroy-ai-lab`
+dispatch tore all 12 resources down in one clean pass (run `31274829358`).** The test is not
+retired by passing once: `S1b`-T2 **deletes the workflow file that proof was measured against**,
+which is why re-running the cycle against the split `ci.yml`/`deploy.yml` is `S1b`'s own
+Definition of Done. **As of this writing the lab is deliberately torn down** — nothing is
+deployed, and a merge to `main` will offer to rebuild it (see `.ai/next-steps.md`).
 
 **The hard edge, and the one that matters:** what is ephemeral is the *workload*, not the
 *blast radius*. The AWS account is shared with the whole organization — it holds
@@ -353,7 +365,7 @@ mismatch there is not evidence of misconfiguration.
   Read this first.
 - **`.ai/project.yml`** — this repo's parameterization of the working method.
 - **`docs/hardening_roadmap.md`** — reference of record **and threat model**: the finding
-  inventory (**F1–F58**), **BR-D1..BR-D25**, the sprint sequence, **§ 5.1 what BR-D23 cut and
+  inventory (**F1–F58**), **BR-D1..BR-D26**, the sprint sequence, **§ 5.1 what BR-D23 cut and
   the premise that would bring each cut back**, the public-repo rules.
 - **`sprints/*/sprint_plan.md`** — the per-sprint plans: S0, **ST**, **MW**, S1, S2, S3+S4
   (merged), S5, S6, plus **SD** which is **deferred** on a Docker precondition, not parallel.

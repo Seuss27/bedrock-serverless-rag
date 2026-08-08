@@ -118,6 +118,13 @@ resource "aws_iam_role_policy" "state_access_policy" {
           "aoss:CreateAccessPolicy",
           "aoss:GetAccessPolicy",
           "aoss:UpdateAccessPolicy",
+          # MW-T6, measured from a real destroy under this role, not guessed from this
+          # policy's own sibling delete verbs. Missing entirely until now -- the first
+          # real destroy under the CI role got exactly as far as
+          # aws_opensearchserverless_access_policy.data_access_policy and stopped there
+          # with AccessDeniedException, leaving the AOSS collection, its security
+          # policies, and the KB execution role still live, blocked behind it.
+          "aoss:DeleteAccessPolicy",
           "aoss:ListTagsForResource",
           "bedrock:CreateKnowledgeBase",
           "bedrock:DeleteKnowledgeBase",
@@ -132,11 +139,12 @@ resource "aws_iam_role_policy" "state_access_policy" {
           # exercise this exact refresh path. Measured live 2026-08-07, MW-T6: CI's first
           # real plan attempt failed AccessDeniedException on exactly this action against
           # the Knowledge Base. This fix closes THIS gap, not the class: it does not mean
-          # the create-path harvest is now exhaustive, and it says nothing about the
-          # destroy path, which is separately and still unmeasured -- e.g.
-          # aoss:DeleteAccessPolicy has no grant here at all, unlike every sibling AOSS
-          # resource's delete verb. Regenerate from a real destroy, don't presume from this
-          # comment.
+          # the create-path harvest is now exhaustive. The destroy path was separately
+          # and still unmeasured when this comment was first written -- it no longer is;
+          # see aoss:DeleteAccessPolicy above, added 2026-08-08 from a real destroy's own
+          # AccessDeniedException, not guessed from this paragraph. That destroy has still
+          # only been run once and stopped at that one call, so anything further down the
+          # destroy graph remains just as unmeasured as this gap was.
           "bedrock:ListTagsForResource"
         ],
         Resource = "*" # This should be locked down outside of lab use

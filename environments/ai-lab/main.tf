@@ -1,5 +1,6 @@
-# No-op touch, PR #53: deliberately triggers deploy-ai-lab.yml's path filter so the
-# plan-summary fix in this PR can be watched running once before merge.
+# No-op touch: deliberately triggers deploy-ai-lab.yml's path filter to verify, in one
+# real CI run, the secrets-based disclosure fix (#55), the bedrock:ListTagsForResource
+# grant (#54), and the data_plane_principal_arns wiring (#53) all together.
 module "rag_backend" {
   source = "../../modules/aws-bedrock-rag"
 

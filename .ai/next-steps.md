@@ -72,8 +72,10 @@ resources; the S3 state object is 373 bytes (an empty state). The teardown was r
 added, 0 changed, 12 destroyed`**. *(Both minutes appear across these docs; they are the run's
 start and finish, not a discrepancy.)*
 
-⚠️ **The three verifications above have a short shelf life, by design:** granting the pending
-approval below falsifies all of them at once.
+**Re-confirmed 2026-08-08 after PR #73 merged:** both rebuild approvals were **rejected**
+(runs `31277980735`, `31283111192`), AWS still returns no collections and no knowledge bases,
+and the lab remains down. ⚠️ **These verifications expire the moment any rebuild approval is
+granted — re-measure rather than re-quoting them.**
 
 **It tore down clean in ONE pass** — worth recording, because `MW`-T6 needed three rounds before
 the CI role held enough IAM verbs. The destroy path is now proven sufficient end-to-end. *(This
@@ -85,27 +87,52 @@ does not discharge `S1b`'s DoD, which requires the cycle against the **new** spl
 [`61-104`](modules/aws-bedrock-rag/opensearch.tf#L61-L104), and the decision is **BR-D26**. It
 costs nothing to adopt against an empty state and takes effect on the next build.
 
-### 🔴 A rebuild approval is PENDING RIGHT NOW — do not click it by reflex
+### ⚠️ A RED push-to-`main` run is now the EXPECTED steady state — do not read it as broken
 
-**Run [`31277980735`](https://github.com/glunk-works/bedrock-serverless-rag/actions/runs/31277980735)
-(the merge of PR #72) has `tofu-apply` sitting in `waiting` since 20:54 UTC.** `tofu-plan-main`
-already succeeded on it. Against an empty state that plan is **`12 to add`**, so **granting that
-approval rebuilds the entire stack** (~15 min, most of it the AOSS collection) and restarts the
-OCU meter. This is not hypothetical or "next time" — it is one click, outstanding, now.
+**This is the single most misreadable signal in the repo right now, so read it before reacting
+to a red X on `main`.**
 
-Since `S1a`-T5 removed `paths:`, **every** merge to `main` runs `tofu-apply`. While the stack was
-up those were `0/0/0` no-ops and approving by reflex was harmless — the habit the approvals on
-#70 and #71 established. **That habit is now the hazard.**
+Since `S1a`-T5 removed `paths:`, **every** merge to `main` runs `tofu-apply`. With the lab
+deliberately torn down, every such run plans **`12 to add`** — a full rebuild — so the correct
+response is to **reject the Environment approval**. **Rejecting records the job and the whole
+run as `failure`** (measured: runs `31277980735` and `31283111192`, both rejected, both
+`conclusion: failure`, with `security-and-linting` and `tofu-plan-main` green inside them).
 
-**Read `tofu-plan-main`'s summary before approving.** `total changes: 0` is a no-op;
-`total changes: 12` is a rebuild. To keep the lab torn down, **decline** — `main` then describes
-a stack that is not applied, which is the correct posture for a lab the `S1` plan describes as
-*"designed to sit destroyed with nobody on call"* (`sprint_plan.md`, in a BR-D23 reshape banner).
+> 🔴 **The trap.** Until 2026-08-08 `CLAUDE.md` cited *"every push-to-`main` run remains
+> `failure`"* as the evidence for **F39/F51 — that no CI apply had ever succeeded.** That
+> sentence was struck the same day, because `MW`-T6 disproved it. **The identical red X is now
+> back, meaning the opposite:** the pipeline works, the plan is trustworthy, and a human
+> correctly declined a rebuild. Do not re-derive the retired conclusion from the recurring
+> symptom. **To tell them apart, look INSIDE the run:** `tofu-plan-main` green + `tofu-apply`
+> failed = a rejected approval, working as designed. `tofu-plan-main` failed = a real problem.
+
+**Before approving anything, read `tofu-plan-main`'s summary.** `total changes: 0` is a no-op;
+`total changes: 12` is a rebuild. Declining leaves `main` describing a stack that is not
+applied — the correct posture for a lab the `S1` plan calls *"designed to sit destroyed with
+nobody on call"* (`sprint_plan.md`, in a BR-D23 reshape banner).
 
 ⚠️ **Runs queue, they do not cancel.** `deploy-ai-lab.yml`'s workflow-level `concurrency` group
-sets `cancel-in-progress: false`, and `destroy-ai-lab` shares that group — so any later merge's
-apply **queues behind this waiting one**, and a burst of three or more can silently drop a
-middle run's pending approval. Resolve this one before stacking another merge on top of it.
+sets `cancel-in-progress: false`, and `destroy-ai-lab` shares it — so each merge's apply queues
+behind any still-waiting one, and a burst of three or more can silently drop a middle run's
+pending approval. Resolve one before stacking the next.
+
+### 📌 New input for `S1b`, arising from the above — decide, don't drift
+
+`S1a` accepted "every merge consumes an approval" on the premise that **the stack would be up
+and the applies would be no-ops**. That premise inverted the moment the lab was torn down: with
+it down, every merge — including every docs-only handoff PR — now costs **a manual rejection and
+leaves a red run on `main`**. Two real consequences: approval fatigue on a gate whose entire
+value is that someone reads it, and a `main` whose CI history is red by design, which is exactly
+the condition under which a genuine failure stops being noticed.
+
+**This is not a bug and `S1a`-T5 was not wrong** — it is a premise that changed after the
+decision. **`S1b`-T2 should decide it explicitly** (options: leave as-is and accept the noise;
+gate `tofu-apply` on a non-zero `total changes:`; or a `workflow_dispatch`-only apply while the
+lab is meant to sit destroyed). ⚠️ **Note the tension before choosing:** the reassessment banner
+in the sprint plan explicitly warns against a skip-if-no-changes short-circuit, because it
+reduces how often the gate is exercised. That warning was written while the stack was UP and
+every apply was a no-op — the reverse of today. Re-read it against the current premise rather
+than treating it as settled either way.
 
 `glunk-works/global-bootstrap#7` (org-wide lock-table question) still awaits a response —
 informational, not blocking.

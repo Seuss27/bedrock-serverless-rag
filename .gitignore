@@ -19,6 +19,12 @@ aws_creds
 # collection endpoint. Ephemeral on a runner; a disclosure in a working tree.
 tfplan
 plan.json
+# plan.err too: a plan's STDERR sink. The BR-D4 pattern redirects stdout to /dev/null and
+# summarizes, which makes stderr the one plan channel still landing in a working tree -- and
+# an OpenTofu error renders resource attributes freely. Added 2026-08-08 after a local
+# diagnostic plan left one untracked and uncovered (0 bytes, so no disclosure -- but
+# `git add -A` would have committed it on a public repo).
+plan.err
 
 # Python environment. Both spellings: `venv/` does NOT match `.venv/`, and
 # `environments/ai-lab/.venv/` is ignored today only because `python -m venv` happens to write

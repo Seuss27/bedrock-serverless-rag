@@ -55,32 +55,57 @@ entirely `code_paths` and entirely trust-boundary.
 reassessment was performed, approved, and merged (#71). `T2` is a workflow-file rewrite,
 depends on nothing below, and still ends at `/critic-gate` and `/ship`.
 
-### ⚠️ The stack is live, and it is not cheap — owner decision open
+### ✅ The stack is DESTROYED — nothing is running, nothing is billing
 
-Measured 2026-08-08. **All 12 resources exist and match config**, evidenced by run
-`31274238499`'s apply reporting `0 added, 0 changed, 0 destroyed` under the CI role. The cost:
-[`opensearch.tf:61-72`](modules/aws-bedrock-rag/opensearch.tf#L61-L72) sets **no
-`standby_replicas`**, so the `VECTORSEARCH` collection takes AWS's default `ENABLED` — the
-~4-OCU redundancy floor, not the 2-OCU dev floor. **AOSS bills that floor regardless of usage**;
-at $0.24/OCU-hour that is roughly **$690/month** against the **$20** guardrail in
-[`variables.tf:34`](environments/ai-lab/variables.tf#L34), on a corpus BR-D20 says is empty.
-*Derived from AWS's published pricing, **not** an observed bill — confirm in Cost Explorer.*
+> **⚠️ Corrected 2026-08-08 21:10 UTC.** This section previously read *"The stack is live, and it
+> is not cheap"* and recommended destroying it. **That was true when written and false by the
+> time it merged** — the owner had already acted on the recommendation ~90 minutes earlier, and
+> the handoff restated the finding without re-measuring. The repo's own `record-is-not-evidence`
+> failure, committed into the ledger whose job is to prevent it. Left visible rather than
+> quietly overwritten.
 
-**Recommendation: destroy it.** Not a compromise — BR-D20 says nothing here is precious, and
-`S1b`'s own DoD requires a `destroy → apply → verify` cycle anyway, so the rebuild is work that
-must happen regardless. **Not fired:** `destroy-ai-lab` is `workflow_dispatch` + typed confirm
-phrase + human-watched (~11 min for AOSS; per the `MW` lesson, check *which* step is slow before
-reading elapsed time as stuck). *Worth a small separate change: `standby_replicas = DISABLED`
-roughly halves the floor for a lab needing no redundancy — not yet filed.*
+**Verified against AWS and state, not inferred:** `aws opensearchserverless list-collections`
+and `bedrock-agent list-knowledge-bases` both return empty; `tofu state list` returns 0
+resources; the S3 state object is 373 bytes (an empty state). The teardown was run
+`31274829358` — a `workflow_dispatch` of `destroy-ai-lab` **dispatched 19:36:11 UTC, completed
+19:37:16** — `Plan: 0 to add, 0 to change, 12 to destroy` → **`Apply complete! Resources: 0
+added, 0 changed, 12 destroyed`**. *(Both minutes appear across these docs; they are the run's
+start and finish, not a discrepancy.)*
 
-### ⚠️ Destroying changes what an Environment approval means
+⚠️ **The three verifications above have a short shelf life, by design:** granting the pending
+approval below falsifies all of them at once.
 
-Since `S1a`-T5 removed `paths:`, **every** merge to `main` runs `tofu-apply`. While the stack is
-up those are `0/0/0` no-ops and approving by reflex is harmless — which is exactly the habit the
-two approvals on #70 and #71 just established. **The moment the stack is destroyed that stops
-being true:** the next merge of anything, including a docs-only handoff PR, plans `12 to add`
-and **rebuilds the whole stack** if approved. **Read `tofu-plan-main`'s summary before
-approving** — a non-zero `total changes:` on a docs-only merge means a rebuild, not a no-op.
+**It tore down clean in ONE pass** — worth recording, because `MW`-T6 needed three rounds before
+the CI role held enough IAM verbs. The destroy path is now proven sufficient end-to-end. *(This
+does not discharge `S1b`'s DoD, which requires the cycle against the **new** split files that
+`T2` has not written yet.)*
+
+**`standby_replicas = DISABLED` is now FILED, not a suggestion** — the attribute is
+[`opensearch.tf:97`](modules/aws-bedrock-rag/opensearch.tf#L97), inside the resource at
+[`61-104`](modules/aws-bedrock-rag/opensearch.tf#L61-L104), and the decision is **BR-D26**. It
+costs nothing to adopt against an empty state and takes effect on the next build.
+
+### 🔴 A rebuild approval is PENDING RIGHT NOW — do not click it by reflex
+
+**Run [`31277980735`](https://github.com/glunk-works/bedrock-serverless-rag/actions/runs/31277980735)
+(the merge of PR #72) has `tofu-apply` sitting in `waiting` since 20:54 UTC.** `tofu-plan-main`
+already succeeded on it. Against an empty state that plan is **`12 to add`**, so **granting that
+approval rebuilds the entire stack** (~15 min, most of it the AOSS collection) and restarts the
+OCU meter. This is not hypothetical or "next time" — it is one click, outstanding, now.
+
+Since `S1a`-T5 removed `paths:`, **every** merge to `main` runs `tofu-apply`. While the stack was
+up those were `0/0/0` no-ops and approving by reflex was harmless — the habit the approvals on
+#70 and #71 established. **That habit is now the hazard.**
+
+**Read `tofu-plan-main`'s summary before approving.** `total changes: 0` is a no-op;
+`total changes: 12` is a rebuild. To keep the lab torn down, **decline** — `main` then describes
+a stack that is not applied, which is the correct posture for a lab the `S1` plan describes as
+*"designed to sit destroyed with nobody on call"* (`sprint_plan.md`, in a BR-D23 reshape banner).
+
+⚠️ **Runs queue, they do not cancel.** `deploy-ai-lab.yml`'s workflow-level `concurrency` group
+sets `cancel-in-progress: false`, and `destroy-ai-lab` shares that group — so any later merge's
+apply **queues behind this waiting one**, and a burst of three or more can silently drop a
+middle run's pending approval. Resolve this one before stacking another merge on top of it.
 
 `glunk-works/global-bootstrap#7` (org-wide lock-table question) still awaits a response —
 informational, not blocking.

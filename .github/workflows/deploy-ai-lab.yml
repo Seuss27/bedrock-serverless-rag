@@ -3,10 +3,8 @@ name: Deploy AI Lab Infrastructure
 on:
   push:
     branches: [main]
-    paths: ['environments/ai-lab/**', 'modules/**']
   pull_request:
     branches: [main]
-    paths: ['environments/ai-lab/**', 'modules/**']
   # Human-triggered only -- deliberately NOT pull_request/pull_request_target/workflow_run
   # (CLAUDE.md's GitHub Actions security rules). A typed confirmation phrase is required
   # below, matched in the destroy job's own `if:` (a GitHub expression comparison, not a
@@ -24,13 +22,25 @@ permissions:
   id-token: write
   contents: read
 
+# F20/S1a-T5: two merges in quick succession must queue, not race, for the same state --
+# the DynamoDB lock turns a race into a hard failure rather than a queue. `false` is
+# load-bearing: cancelling an IN-PROGRESS `tofu apply` orphans the lock and leaves state
+# describing a half-applied world. Note the asymmetry this does NOT cover: GitHub still
+# replaces a merely-PENDING (queued, not yet started) run in this group with a newer one --
+# safe for state (a pending run never took the lock) but it means a burst of 3+ merges can
+# drop a middle run's apply/approval silently. Workflow-level, so `destroy-ai-lab`
+# (workflow_dispatch on the same ref) shares this group too -- a destroy dispatched while an
+# apply sits waiting for approval queues behind it; the operator can cancel the waiting run.
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   security-and-linting:
-    name: Security & Linting Checks
-    # This job (and opentofu-pipeline, which needs it) exists to plan/apply on push/PR --
-    # a manual dispatch is exclusively for the destroy job below. Skipping this job on
-    # workflow_dispatch skips opentofu-pipeline too (a skipped `needs` job is not `success`),
-    # so a manual dispatch runs ONLY the job its confirm input actually gates.
+    # This job (and tofu-plan-main/tofu-apply, which need it) exists to plan/apply on
+    # push/PR -- a manual dispatch is exclusively for the destroy job below. Skipping this
+    # job on workflow_dispatch skips the plan/apply chain too (a skipped `needs` job is not
+    # `success`), so a manual dispatch runs ONLY the job its confirm input actually gates.
     if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     defaults:
@@ -111,9 +121,15 @@ jobs:
           framework: terraform
           quiet: true
 
-  opentofu-pipeline:
-    name: OpenTofu Plan & Apply
+  # F13/F14/S1a-T5: read-only plan on push to main, split out of the old fused
+  # plan-and-apply job. An Environment approval fires when a job STARTS, so a fused job
+  # would ask tofu-apply's approver to sign off before any plan had run -- this job exists
+  # so the approver has fresh evidence to read. Shaped identically to S1b-T4's PR-triggered
+  # plan job (same summarizer, same -lock=false, no artifact) so the two stay diffable when
+  # T4 lands; it differs only in trigger (push to main, not pull_request).
+  tofu-plan-main:
     needs: security-and-linting
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -122,118 +138,175 @@ jobs:
         # BR-D4 EXCEPTION, recorded in CLAUDE.md's BR-D4 section (see the identical note
         # on the credentials step in security-and-linting above): all three of these ride
         # `secrets.*`, not `vars.*`, even though none is secret by BR-D4's own definition
-        # (bucket name, two role ARNs -- restricted, not PII). Measured live 2026-08-07
-        # (run 31226198865, deleted after capture): a `vars.*` value used anywhere in a
-        # job -- `env:`, `with:`, doesn't matter -- prints in cleartext in the
-        # auto-generated preamble GitHub emits for EVERY step, `uses:` steps included,
-        # with no way to register it for masking before that first dump happens (the
-        # dump itself happens before any of this job's own script logic runs at all, so
-        # no step ordering fixes it). Only `secrets.*` is masked unconditionally,
-        # everywhere, from the first step onward -- proven in the same leaked run, where
-        # the one value already on `secrets.*` (below) rendered as `***` throughout while
-        # everything on `vars.*` did not. This is the sole mechanism that delivers what
-        # BR-D4 actually wants for a value that must not reach a workflow log.
+        # (bucket name, two role ARNs -- restricted, not PII).
         TF_VAR_data_source_bucket_name: ${{ secrets.DATA_SOURCE_BUCKET_NAME }}
-        # PII (BR-D4), so this rides a secret, not a variable -- a repo `vars.*` value
-        # renders in cleartext anywhere it's echoed. Requires the BUDGET_NOTIFICATION_EMAIL
-        # repository secret to be set (S0-T8); until then this job's plan step fails on
-        # "No value for required variable", same as any other missing required input.
+        TF_VAR_budget_notification_email: ${{ secrets.BUDGET_NOTIFICATION_EMAIL }}
+        TF_VAR_data_plane_principal_arns: '["${{ secrets.AWS_OIDC_ROLE_ARN }}","${{ secrets.SSO_ADMIN_ROLE_ARN }}"]'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # F-4 defense-in-depth -- see the identical step in security-and-linting above.
+      # Derived from the SAME expression passed to role-to-assume below (not hardcoded to
+      # the apply role): the day S2-T2 creates AWS_PLAN_ROLE_ARN, a mask pinned to the
+      # wrong role would silently mask the wrong account with no failing check.
+      - name: Register bare account id for log masking
+        env:
+          DEPLOY_ARN: ${{ secrets.AWS_PLAN_ROLE_ARN || secrets.AWS_OIDC_ROLE_ARN }}
+        run: |
+          set -euo pipefail
+          account_id="$(echo "$DEPLOY_ARN" | cut -d: -f5)"
+          if [[ ! "$account_id" =~ ^[0-9]{12}$ ]]; then
+            echo "::error::plan role ARN did not yield a 12-digit account id -- account-id masking is NOT active"
+            exit 1
+          fi
+          echo "::add-mask::$account_id"
+
+      - uses: opentofu/setup-opentofu@v2
+
+      # No read-only plan role exists yet (S2-T0 creates one) -- falls through to the
+      # apply-capable role today. The `||` shape means S2-T2 flips this by creating the
+      # secret, with no workflow edit.
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_PLAN_ROLE_ARN || secrets.AWS_OIDC_ROLE_ARN }} # S2-T2: drop the fallback once the upstream plan role is adopted
+          aws-region: us-east-1
+
+      - name: OpenTofu Init
+        run: tofu init
+
+      # -lock=false: a read-only plan must never take the DynamoDB lock and block a
+      # concurrent apply.
+      # ⚠️ `-out=` does NOT suppress stdout -- it saves the plan ADDITIONALLY, so the full
+      # human-readable render (account id, role ARNs, the AOSS collection endpoint --
+      # everything BR-D4 forbids) still prints unless stdout is separately silenced.
+      # -no-color keeps ANSI sequences from splitting a masked value across bytes.
+      - name: OpenTofu Plan
+        run: tofu plan -no-color -lock=false -input=false -out=tfplan > /dev/null
+
+      # F16/BR-D4: summarize, never dump. Resource actions and addresses only -- never an
+      # attribute value, which is what the human-readable plan renders. Value-free only as
+      # long as no resource here uses for_each/count (a resource's instance key rides its
+      # own `.address`) -- true today (grep -rn 'for_each|count *=' finds none), not enforced.
+      - name: Summarize plan
+        run: |
+          set -euo pipefail
+          tofu show -json tfplan > plan.json
+          jq -r '(.resource_changes // [])[]
+                 | select(.change.actions != ["no-op"])
+                 | "\(.change.actions | join(",")) \(.address)"' plan.json \
+            | sort | tee -a "$GITHUB_STEP_SUMMARY"
+          jq -r '[(.resource_changes // [])[] | select(.change.actions != ["no-op"])] | length
+                 | "total changes: \(.)"' plan.json >> "$GITHUB_STEP_SUMMARY"
+
+      # A plan file on a public repo's artifact store is world-readable and contains
+      # everything the summary above was written to omit. No artifact is uploaded by this
+      # job; deleting the files is belt-and-suspenders on an ephemeral runner.
+      - name: Clean up plan files
+        if: always()
+        run: rm -f tfplan plan.json
+
+  # F13/F14/F20/S1a-T5: the only control between a merge and an admin-capable apply until
+  # S2 lands. Gated behind the `production` Environment -- approval fires when this job
+  # STARTS, so the approver reads tofu-plan-main's just-produced summary before clicking
+  # approve. What actually applies is THIS job's own plan, taken and saved fresh AFTER that
+  # approval and never re-planned again (F14: what applies is what this job's own summary,
+  # below, describes) -- but that is a distinct plan from the one the approver read. The gap
+  # between the two is an accepted residual (sprint_plan.md's Critical Review): passing a
+  # single plan file across the job boundary would need a public artifact, which BR-D4
+  # forbids more directly than the residual costs.
+  tofu-apply:
+    needs: tofu-plan-main
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    environment: production
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: environments/ai-lab
+    env:
+        TF_VAR_data_source_bucket_name: ${{ secrets.DATA_SOURCE_BUCKET_NAME }}
         TF_VAR_budget_notification_email: ${{ secrets.BUDGET_NOTIFICATION_EMAIL }}
         # MW-T6. The AOSS access policy's Principal list is fully declarative, so CI must
         # supply the SAME set of ARNs a local admin-SSO apply does (this job's own deploy
         # role, secrets.AWS_OIDC_ROLE_ARN -- already an IAM role ARN, it's what
-        # role-to-assume takes above -- PLUS the human operator's SSO role) or CI's apply
+        # role-to-assume takes below -- PLUS the human operator's SSO role) or CI's apply
         # silently overwrites live state down to one principal, revoking local data-plane
-        # access until the next local apply restores it. Constructed as an HCL list
-        # literal via GitHub Actions' own string interpolation so neither ARN ever has to
-        # be typed, read, or printed anywhere in this file or a session transcript.
+        # access until the next local apply restores it.
         TF_VAR_data_plane_principal_arns: '["${{ secrets.AWS_OIDC_ROLE_ARN }}","${{ secrets.SSO_ADMIN_ROLE_ARN }}"]'
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
-      # F-4 defense-in-depth -- see the identical step and comment in security-and-linting
-      # above. Registered per-job (masks don't cross the job boundary) and again as early
-      # as possible: the AOSS/Bedrock/S3 calls below are exactly where an AccessDenied
-      # would render an assumed-role ARN, a different string than the plain role ARN.
+      # F-4 defense-in-depth -- identical to the same step in the other jobs.
       - name: Register bare account id for log masking
         env:
           DEPLOY_ARN: ${{ secrets.AWS_OIDC_ROLE_ARN }}
         run: |
           set -euo pipefail
           account_id="$(echo "$DEPLOY_ARN" | cut -d: -f5)"
-          # Fail loudly rather than silently skip: an empty/malformed account id means
-          # this defense-in-depth control did NOT register, and a green step here must
-          # not be readable as "masking is active" when it isn't (F48's own lesson --
-          # a control whose only evidence is a step that also passes when it did nothing
-          # is indistinguishable from a miss).
           if [[ ! "$account_id" =~ ^[0-9]{12}$ ]]; then
             echo "::error::AWS_OIDC_ROLE_ARN did not yield a 12-digit account id -- account-id masking is NOT active"
             exit 1
           fi
           echo "::add-mask::$account_id"
 
-      # 1. Setup Python
+      # create_index.py runs via a local-exec provisioner during apply -- its deps must be
+      # installed before OpenTofu reaches that resource. This job also holds the
+      # admin-capable credential while running that third-party pip install, so the
+      # checkout above drops the GITHUB_TOKEN rather than leave it for that code to find.
       - uses: actions/setup-python@v7
         with:
           python-version: '3.11'
           cache: 'pip'
           cache-dependency-path: environments/ai-lab/requirements.txt
       - run: pip install -r requirements.txt
-      
-      # 2. Setup OpenTofu
+
       - uses: opentofu/setup-opentofu@v2
-      
-      # 3. CONFIGURE CREDENTIALS FIRST
-      # This provides the necessary OIDC tokens for the S3 backend to initialize
-      # BR-D4 EXCEPTION -- secrets.*, not vars.*; see the note on this job's own `env:`
-      # block above.
+
+      # BR-D4 EXCEPTION -- secrets.*, not vars.*; see the note on security-and-linting's
+      # credentials step above.
       - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
           aws-region: us-east-1
-      
-      # 4. Now initialize. Because credentials exist, the S3 backend will work.
+
       - name: OpenTofu Init
         run: tofu init -get=true
-      
-      # 5. Plan and Apply
-      # -input=false: a missing required variable must fail the run, not block it waiting
-      # for a TTY that a GitHub-hosted runner never provides -- an unattended hang holds
-      # the state lock until GitHub's own job timeout, blocking every other tofu operation
-      # against this state in the meantime.
-      #
-      # F16/BR-D4: `tofu plan` renders every known attribute, including ARNs, the account
-      # id and the AOSS collection endpoint, into a public workflow log if dumped raw.
-      # ⚠️ `-out=` does NOT suppress stdout -- it saves the plan ADDITIONALLY, so the full
-      # human-readable render still prints unless stdout is separately silenced. Redirect
-      # stdout only (diagnostics go to stderr, so a real plan failure still surfaces); the
-      # filename `tfplan` matches the exact name .gitignore already reserves for this
-      # purpose (F54) -- `tfplan.bin` would NOT be ignored and is one `git add -A` from
-      # publishing every value this redirect exists to withhold. The `  # ` allowlist below
-      # is value-free only as long as no resource in this repo uses for_each/count (a
-      # resource's instance key rides its address line) -- true today (grep -rn
-      # 'for_each|count *=' finds none), not enforced. S1-T4 owns building the real
-      # summarizer (`tofu show -json` + jq, format-drift-proof); this is a stopgap for
-      # MW-T6, not that task done early.
-      - id: plan
+
+      # -lock-timeout=5m rather than -lock=false: this job DOES need the write lock (it
+      # applies), so a concurrent operation (realistically, a local admin-SSO apply -- the
+      # concurrency group above already excludes sibling CI runs) should make it wait
+      # briefly, not fail outright. Same redirect rationale as tofu-plan-main's plan step.
+      - name: OpenTofu Plan
+        run: tofu plan -no-color -input=false -lock-timeout=5m -out=tfplan > /dev/null
+
+      - name: Summarize plan
         run: |
           set -euo pipefail
-          tofu plan -no-color -input=false -out=tfplan > /dev/null
-          echo "::group::Plan summary (BR-D4 -- resource addresses and change counts only, no attribute values)"
-          # A `tofu show` failure must abort the step (set -e on the assignment), which is
-          # NOT the same thing as grep matching nothing -- the two failure modes are kept
-          # separate here on purpose (a bare `... | grep ... || true` after `-o pipefail`
-          # would swallow both identically and let a broken plan look like a clean one).
-          summary="$(tofu show -no-color tfplan)"
-          printf '%s\n' "$summary" | grep -E '^(Plan:|No changes\.|  # )' || [ "$?" -eq 1 ]
-          echo "::endgroup::"
+          tofu show -json tfplan > plan.json
+          jq -r '(.resource_changes // [])[]
+                 | select(.change.actions != ["no-op"])
+                 | "\(.change.actions | join(",")) \(.address)"' plan.json \
+            | sort | tee -a "$GITHUB_STEP_SUMMARY"
+          jq -r '[(.resource_changes // [])[] | select(.change.actions != ["no-op"])] | length
+                 | "total changes: \(.)"' plan.json >> "$GITHUB_STEP_SUMMARY"
 
-      # Applies the EXACT plan saved above, not a fresh re-plan -- what gets applied is
-      # what the summary above described (closes F14's "re-plans rather than applying a
-      # saved plan" gap as a side effect of the F16 fix, not a separate change).
+      # Applies the EXACT plan saved above, not a fresh re-plan (F14) -- what gets applied
+      # is what THIS job's own summary just described (see the job-level comment above for
+      # the residual gap between this plan and the one the approver actually read).
+      # -lock-timeout=5m again: the plan step above released the lock before this step
+      # re-takes it, so the same brief-wait reasoning applies here, one step later.
+      # -auto-approve is permitted here, and only here, because the Environment approval
+      # already happened (BR-D2).
       - name: OpenTofu Apply
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: tofu apply -auto-approve -input=false tfplan
+        run: tofu apply -input=false -lock-timeout=5m -auto-approve tfplan
+
+      # Same rationale as tofu-plan-main's cleanup step.
+      - name: Clean up plan files
+        if: always()
+        run: rm -f tfplan plan.json
 
   # MW-T6: the "destroy" half of the destroy -> apply -> RetrieveAndGenerate cycle. No such
   # mechanism existed before this job -- deploy-ai-lab.yml had only push/pull_request. Runs
@@ -241,6 +314,11 @@ jobs:
   # workflow_dispatch block above); any other event, ref, or phrase leaves this job skipped.
   # This is the first-ever real destroy under the CI role -- per the MW sprint plan's
   # Critical review, a human watches the run live rather than firing it unattended.
+  # Deliberately NOT behind `environment: production` -- S1a planning decision 2: GitHub
+  # permits self-approval on Environments, so on a one-maintainer repo it would buy zero
+  # independent review while changing this job's OIDC subject. The typed confirm phrase
+  # plus a human watching the run live is the accepted control; revisit on a second
+  # maintainer (BR-D25).
   destroy-ai-lab:
     name: Destroy AI Lab Infrastructure (manual)
     if: >-
@@ -252,15 +330,15 @@ jobs:
       run:
         working-directory: environments/ai-lab
     env:
-      # Same BR-D4 secrets.* exception as opentofu-pipeline above -- see that job's env:
-      # block comment for the measured reason.
+      # Same BR-D4 secrets.* exception as the jobs above -- see their env: block comments
+      # for the measured reason.
       TF_VAR_data_source_bucket_name: ${{ secrets.DATA_SOURCE_BUCKET_NAME }}
       TF_VAR_budget_notification_email: ${{ secrets.BUDGET_NOTIFICATION_EMAIL }}
       TF_VAR_data_plane_principal_arns: '["${{ secrets.AWS_OIDC_ROLE_ARN }}","${{ secrets.SSO_ADMIN_ROLE_ARN }}"]'
     steps:
       - uses: actions/checkout@v7
 
-      # F-4 defense-in-depth -- identical to the same step in the other two jobs.
+      # F-4 defense-in-depth -- identical to the same step in the other jobs.
       - name: Register bare account id for log masking
         env:
           DEPLOY_ARN: ${{ secrets.AWS_OIDC_ROLE_ARN }}
@@ -283,8 +361,8 @@ jobs:
       - name: OpenTofu Init
         run: tofu init -get=true
 
-      # Same BR-D4/F16 summarization pattern as opentofu-pipeline's plan step: stdout
-      # redirected, only resource addresses and change counts printed, no attribute values.
+      # Same BR-D4/F16 summarization pattern as the plan jobs above: stdout redirected,
+      # only resource addresses and change counts printed, no attribute values.
       - id: destroy-plan
         run: |
           set -euo pipefail
@@ -297,8 +375,7 @@ jobs:
       # Applies the exact destroy plan saved above. -auto-approve is required (no TTY on a
       # hosted runner); the human approval this repo requires (BR-D2) is the act of
       # dispatching this job with the correct confirm phrase, plus watching this run live
-      # per the MW sprint plan -- the same accepted-gap shape as opentofu-pipeline's own
-      # -auto-approve path (F13, fixed by S1-T5, out of scope for this job).
+      # per the MW sprint plan -- the same accepted-gap shape as tofu-apply's own
+      # -auto-approve path (F13, fixed by S1a-T5, out of scope for this job).
       - name: OpenTofu Destroy
         run: tofu apply -auto-approve -input=false tfplan
-  

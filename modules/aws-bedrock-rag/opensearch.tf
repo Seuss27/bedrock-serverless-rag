@@ -1,3 +1,12 @@
+# The encryption and network policies are prerequisites of the collection below, so they
+# can't reference aws_opensearchserverless_collection.vector_store.name (it doesn't exist
+# yet) the way iam.tf's data-access policy does. Both this literal and the collection's own
+# `name` must still match exactly -- deriving both from one local closes the hazard CLAUDE.md
+# documents: two independent resources hardcoding the same string can silently diverge.
+locals {
+  collection_name = "bedrock-rag-store"
+}
+
 # 1. Encryption Policy (Required prerequisite)
 resource "aws_opensearchserverless_security_policy" "encryption_policy" {
   name        = "bedrock-encryption-policy"
@@ -8,7 +17,7 @@ resource "aws_opensearchserverless_security_policy" "encryption_policy" {
     Rules = [
       {
         # Must match the collection name exactly
-        Resource     = ["collection/bedrock-rag-store"]
+        Resource     = ["collection/${local.collection_name}"]
         ResourceType = "collection"
       }
     ]
@@ -28,11 +37,11 @@ resource "aws_opensearchserverless_security_policy" "network_policy" {
       Rules = [
         {
           ResourceType = "collection"
-          Resource     = ["collection/bedrock-rag-store"]
+          Resource     = ["collection/${local.collection_name}"]
         },
         {
           ResourceType = "dashboard"
-          Resource     = ["collection/bedrock-rag-store"]
+          Resource     = ["collection/${local.collection_name}"]
         }
       ]
       AllowFromPublic = true
@@ -42,7 +51,7 @@ resource "aws_opensearchserverless_security_policy" "network_policy" {
 
 # 3. The Serverless Collection
 resource "aws_opensearchserverless_collection" "vector_store" {
-  name = "bedrock-rag-store"
+  name = local.collection_name
 
   # For Bedrock RAG, this must be set to VECTORSEARCH, not SEARCH
   type = "VECTORSEARCH"

@@ -115,7 +115,19 @@ resource "aws_iam_role_policy" "state_access_policy" {
           "bedrock:DeleteDataSource",
           # Create waiters poll these. MW-T5, measured.
           "bedrock:GetKnowledgeBase",
-          "bedrock:GetDataSource"
+          "bedrock:GetDataSource",
+          # The AWS provider calls ListTagsForResource when refreshing a taggable resource,
+          # same class as F50's iam:ListAttachedRolePolicies gap. MW-T5's harvest missed
+          # this one -- the admin-SSO apply that produced the harvest never happened to
+          # exercise this exact refresh path. Measured live 2026-08-07, MW-T6: CI's first
+          # real plan attempt failed AccessDeniedException on exactly this action against
+          # the Knowledge Base. This fix closes THIS gap, not the class: it does not mean
+          # the create-path harvest is now exhaustive, and it says nothing about the
+          # destroy path, which is separately and still unmeasured -- e.g.
+          # aoss:DeleteAccessPolicy has no grant here at all, unlike every sibling AOSS
+          # resource's delete verb. Regenerate from a real destroy, don't presume from this
+          # comment.
+          "bedrock:ListTagsForResource"
         ],
         Resource = "*" # This should be locked down outside of lab use
       },

@@ -48,6 +48,15 @@ entry; the short version:
   transcript — a real BR-D4 near-miss, caught and named rather than repeated, recorded in
   the roadmap's 2026-08-08 entry.
 
+**`/retro` ran on this session** (Claude's own persistent memory, not a repo file) and
+routed four findings there — most load-bearing for whoever picks up `S1`: **no
+`/critic-gate` pass ran on any of `MW`'s four PRs**, including two `bootstrap/` IAM widenings,
+relying on self-review alone on a repo with no CI review gate. Run `/critic-gate` before
+`/way-of-working:ship` on anything touching `code_paths` from here on, `bootstrap/`
+especially. One judgment call was surfaced, not resolved: the roadmap's single-line table
+rows are getting expensive to edit precisely (one `Edit` near-miss this session) — owner's
+call whether that's worth an issue.
+
 ## Next
 
 **Plan `S1`.** No `implementing` work is queued — the next action is a planning pass, not a

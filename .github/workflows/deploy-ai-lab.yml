@@ -228,6 +228,25 @@ jobs:
             | $ks[] | select(($b[.] // null) != ($a[.] // null))
           '
 
+      # TEMPORARY, same investigation. Breaks the "notification" set down into its
+      # non-PII fields (threshold/operator/type, and email-list COUNT, never the
+      # addresses themselves) so we can tell a structural mismatch (extra/missing
+      # block, different threshold) from a subscriber-list mismatch without ever
+      # printing an email address.
+      - name: Debug budget notification structure (BR-D4 -- no email values)
+        run: |
+          set -euo pipefail
+          tofu show -json tfplan | jq -r '
+            .resource_changes[]
+            | select(.address == "aws_budgets_budget.ai_lab_monthly")
+            | .change
+            | to_entries[]
+            | select(.key == "before" or .key == "after")
+            | .key as $side
+            | (.value.notification // []) | sort_by(.threshold)[]
+            | "\($side): threshold=\(.threshold) type=\(.threshold_type) op=\(.comparison_operator) notif_type=\(.notification_type) email_count=\(.subscriber_email_addresses | length)"
+          '
+
       # Applies the EXACT plan saved above, not a fresh re-plan -- what gets applied is
       # what the summary above described (closes F14's "re-plans rather than applying a
       # saved plan" gap as a side effect of the F16 fix, not a separate change).

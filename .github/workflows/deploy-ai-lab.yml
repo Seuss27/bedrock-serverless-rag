@@ -7,6 +7,18 @@ on:
   pull_request:
     branches: [main]
     paths: ['environments/ai-lab/**', 'modules/**']
+  # Human-triggered only -- deliberately NOT pull_request/pull_request_target/workflow_run
+  # (CLAUDE.md's GitHub Actions security rules). A typed confirmation phrase is required
+  # below, matched in the destroy job's own `if:` (a GitHub expression comparison, not a
+  # shell command -- the phrase never reaches a `run:` block, so BR-D4/injection rules about
+  # ${{ }} in `run:` don't even apply here). A wrong or missing phrase means the destroy job
+  # is skipped, not failed -- visible in the run summary either way.
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type exactly "destroy-ai-lab" to destroy environments/ai-lab. Anything else skips the destroy job.'
+        required: true
+        type: string
 
 permissions:
   id-token: write
@@ -15,6 +27,11 @@ permissions:
 jobs:
   security-and-linting:
     name: Security & Linting Checks
+    # This job (and opentofu-pipeline, which needs it) exists to plan/apply on push/PR --
+    # a manual dispatch is exclusively for the destroy job below. Skipping this job on
+    # workflow_dispatch skips opentofu-pipeline too (a skipped `needs` job is not `success`),
+    # so a manual dispatch runs ONLY the job its confirm input actually gates.
+    if: github.event_name != 'workflow_dispatch'
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -216,5 +233,72 @@ jobs:
       # saved plan" gap as a side effect of the F16 fix, not a separate change).
       - name: OpenTofu Apply
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: tofu apply -auto-approve -input=false tfplan
+
+  # MW-T6: the "destroy" half of the destroy -> apply -> RetrieveAndGenerate cycle. No such
+  # mechanism existed before this job -- deploy-ai-lab.yml had only push/pull_request. Runs
+  # ONLY on a manual dispatch from `main` with the exact confirm phrase (see the on:
+  # workflow_dispatch block above); any other event, ref, or phrase leaves this job skipped.
+  # This is the first-ever real destroy under the CI role -- per the MW sprint plan's
+  # Critical review, a human watches the run live rather than firing it unattended.
+  destroy-ai-lab:
+    name: Destroy AI Lab Infrastructure (manual)
+    if: >-
+      github.event_name == 'workflow_dispatch' &&
+      github.ref == 'refs/heads/main' &&
+      github.event.inputs.confirm == 'destroy-ai-lab'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: environments/ai-lab
+    env:
+      # Same BR-D4 secrets.* exception as opentofu-pipeline above -- see that job's env:
+      # block comment for the measured reason.
+      TF_VAR_data_source_bucket_name: ${{ secrets.DATA_SOURCE_BUCKET_NAME }}
+      TF_VAR_budget_notification_email: ${{ secrets.BUDGET_NOTIFICATION_EMAIL }}
+      TF_VAR_data_plane_principal_arns: '["${{ secrets.AWS_OIDC_ROLE_ARN }}","${{ secrets.SSO_ADMIN_ROLE_ARN }}"]'
+    steps:
+      - uses: actions/checkout@v7
+
+      # F-4 defense-in-depth -- identical to the same step in the other two jobs.
+      - name: Register bare account id for log masking
+        env:
+          DEPLOY_ARN: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+        run: |
+          set -euo pipefail
+          account_id="$(echo "$DEPLOY_ARN" | cut -d: -f5)"
+          if [[ ! "$account_id" =~ ^[0-9]{12}$ ]]; then
+            echo "::error::AWS_OIDC_ROLE_ARN did not yield a 12-digit account id -- account-id masking is NOT active"
+            exit 1
+          fi
+          echo "::add-mask::$account_id"
+
+      - uses: opentofu/setup-opentofu@v2
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: OpenTofu Init
+        run: tofu init -get=true
+
+      # Same BR-D4/F16 summarization pattern as opentofu-pipeline's plan step: stdout
+      # redirected, only resource addresses and change counts printed, no attribute values.
+      - id: destroy-plan
+        run: |
+          set -euo pipefail
+          tofu plan -destroy -no-color -input=false -out=tfplan > /dev/null
+          echo "::group::Destroy plan summary (BR-D4 -- resource addresses and change counts only, no attribute values)"
+          summary="$(tofu show -no-color tfplan)"
+          printf '%s\n' "$summary" | grep -E '^(Plan:|No changes\.|  # )' || [ "$?" -eq 1 ]
+          echo "::endgroup::"
+
+      # Applies the exact destroy plan saved above. -auto-approve is required (no TTY on a
+      # hosted runner); the human approval this repo requires (BR-D2) is the act of
+      # dispatching this job with the correct confirm phrase, plus watching this run live
+      # per the MW sprint plan -- the same accepted-gap shape as opentofu-pipeline's own
+      # -auto-approve path (F13, fixed by S1-T5, out of scope for this job).
+      - name: OpenTofu Destroy
         run: tofu apply -auto-approve -input=false tfplan
   

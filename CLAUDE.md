@@ -113,7 +113,8 @@ if no gate existed on a repo that has one.
   the rule the rest of this section depends on, and it is why **F3** ("one role for plan and
   apply") is not a least-privilege smell but **arbitrary command execution with
   account-admin-capable credentials**. `deploy-ai-lab.yml` runs on `pull_request` and assumes
-  `vars.AWS_OIDC_ROLE_ARN`, whose live trust is `StringLike` over
+  the deploy role ARN (`secrets.AWS_OIDC_ROLE_ARN` since `MW`-T6's BR-D21 storage-mechanism
+  correction below — the trust policy this paragraph is about is unaffected), whose live trust is `StringLike` over
   `repo:<owner>@<org_id>/<repo>@<repo_id>:*` — which **still admits `:pull_request`**. So
   **anyone who can push a branch can edit the `run:` block and get `iam:CreateRole` on `*`** in
   the account holding bounty-infra's findings archive. Any change that gives a `pull_request`
@@ -207,7 +208,23 @@ precious" is true of this lab and false of the account it runs in.
   recorded reason (rotation, cross-account).
 - **Restricted but not secret** — account id, role ARNs, bucket names, the collection
   endpoint — are **not** secrets and do not belong in a secret store. They go in GitHub
-  Actions *variables* and tofu variables, and never in a workflow log (BR-D4).
+  Actions *variables* and tofu variables, and never in a workflow log (BR-D4). ~~They go in
+  GitHub Actions *variables*~~ **Correction, 2026-08-07, and it is a GitHub-specific
+  exception, not a repeal:** for a value used inside a **GitHub Actions workflow run**
+  specifically, that clause is false. Measured live (`MW`-T6, run `31226198865`, deleted
+  after capture): GitHub Actions dumps every `vars.*` value used anywhere in a job — an
+  `env:` block, a `with:` input, doesn't matter — into the auto-generated log preamble it
+  prints for **every step, `uses:` steps included**, before that step's own script logic
+  ever runs. There is no ordering fix: even the first step of a job already carries the
+  job-level `env:` dump in its own preamble. Only `secrets.*` is masked, unconditionally,
+  from the first log line onward. So on GitHub specifically, "restricted, use a variable"
+  and "never in a workflow log" are in direct conflict, and `secrets.*` is the only
+  mechanism that delivers what this rule actually wants. `deploy-ai-lab.yml`'s deploy role
+  ARN, the source bucket name, and the AOSS data-plane SSO principal ARN now ride
+  `secrets.*` for exactly this reason — restricted-not-secret by this rule's own
+  definition, but a workflow-log exception to it, recorded in-file at each use. **The rule
+  is unchanged everywhere else** — `.env`, `tofu` CLI invocations outside CI, and anywhere
+  not subject to a GitHub Actions step preamble still use variables as this rule says.
 - **Infisical is GONE** — deleted in **S0** (PR #20), not merely commented out, and
   `grep -rni infisical` over `modules/`, `environments/`, `bootstrap/` and `.github/` returns
   nothing. *(This bullet said "being removed (S3-T8) … dead commented-out code" until
@@ -231,7 +248,9 @@ precious" is true of this lab and false of the account it runs in.
 ## Local: what must not be committed
 
 This repo is **public**. Genuine secrets never land in git; local values live in `.env`
-(gitignored) and CI values in GitHub Actions **variables**, not the tree. Account
+(gitignored) and CI values in GitHub Actions **variables** — ~~not the tree~~ **or, inside
+`deploy-ai-lab.yml` specifically, `secrets.*`; see the BR-D21 tier-2 correction above** —
+either way, not the tree. Account
 identifiers, role ARNs, the state bucket name, and the AOSS collection endpoint are
 **restricted** — they are not credentials, but on a public repo they are free
 reconnaissance, so they must not reach a PR comment, a workflow log, or a build artifact
@@ -243,8 +262,11 @@ command that *prints* a restricted value pulls it into a session transcript, whi
 summarized, logged, or pasted onward — the value is disclosed before anyone decides to commit
 anything. **Prefer the projection that omits values:**
 
-- `gh variable list --json name` — the bare form prints `AWS_OIDC_ROLE_ARN`'s value, i.e. the
-  **account id**. *(Found live 2026-08-07 during an ST-T5 verification step.)*
+- `gh variable list --json name` — the bare form prints every variable's value in full,
+  restricted or not. *(Found live 2026-08-07 during an ST-T5 verification step, against
+  `AWS_OIDC_ROLE_ARN`, i.e. the account id — that specific variable is deleted as of
+  `MW`-T6's BR-D21 correction, moved to `secrets.*`, but the command's behavior is general
+  and binds any restricted variable this repo adds later.)*
 - `gh secret list` is safe — it never prints values — but `gh variable list` is not, and the
   two look symmetrical.
 - `tofu output` / `tofu show` render state, which renders everything; `nonsensitive()` and a

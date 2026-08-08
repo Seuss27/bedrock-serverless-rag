@@ -71,6 +71,17 @@ Three OpenTofu roots, and the distinction matters for every change:
 > **What replaces it as the harder half:** a *working* pipeline is not a *least-privileged*
 > one. The role CI applies with is still F1's escalation-capable role, and until `S2` retires
 > it the `production` Environment approval is the only control in front of it.
+>
+> 🔴 **AND THE RED X CAME BACK MEANING SOMETHING ELSE — read this before diagnosing a failing
+> `main`.** `tofu-apply` now sits behind the `production` Environment, and **rejecting that
+> approval records the job and the whole run as `failure`** (measured 2026-08-08: runs
+> `31277980735`, `31283111192`). While the lab is deliberately torn down, every merge plans
+> `12 to add`, so **rejecting is the correct action and a red push-to-`main` run is the
+> expected steady state.** The struck sentence above used *"every push-to-`main` run remains
+> `failure`"* as proof that **no CI apply had ever succeeded** — the identical symptom now
+> means the opposite. **Distinguish by looking INSIDE the run:** `tofu-plan-main` green +
+> `tofu-apply` failed = a declined rebuild, working as designed; `tofu-plan-main` failed = a
+> real problem. Never conclude "CI is broken" from the run-level conclusion alone.
 
 ## The working method (owned elsewhere — do not restate it here)
 

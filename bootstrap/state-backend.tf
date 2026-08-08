@@ -64,6 +64,16 @@ resource "aws_iam_role_policy" "state_access_policy" {
         Effect = "Allow"
         Action = [
           "s3:CreateBucket",
+          # S3's HeadBucket API returns 403 for BOTH "no permission" and "bucket doesn't
+          # exist" (a deliberate AWS anti-enumeration measure), and the AWS provider reads
+          # that 403 as "resource no longer exists" during refresh. The state bucket's own
+          # s3:ListBucket grant above doesn't cover this bucket, so CI's refresh of
+          # aws_s3_bucket.bedrock_source misreported it as deleted and planned to recreate
+          # it. Measured live 2026-08-07, MW-T6: local admin-SSO plan was clean while CI's
+          # was not, across two separate CI runs. Read-only verb; flat here matching the
+          # rest of this statement's style, unlike s3:DeleteObject which stays scoped given
+          # force_destroy = true on the source bucket.
+          "s3:ListBucket",
           "s3:PutBucket*",
           # GetBucket* covers most of the AWS provider's bucket-refresh reads (Acl, Cors,
           # Logging, Policy, Replication is NOT one of these -- see below -- RequestPayment,

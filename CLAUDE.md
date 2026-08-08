@@ -101,9 +101,11 @@ if no gate existed on a repo that has one.
   provider versions** — and note the current split (`~> 5.0` in `environments/ai-lab`,
   `~> 6.0` in `bootstrap`) is drift to reconcile (S3-T7), not an intended matrix.
 - **Never hardcode a resource name that a sibling resource also references as a string.**
-  `opensearch.tf` writes `collection/bedrock-rag-store` as a literal inside both security
-  policies while the collection resource declares the same name separately — the two can
-  silently diverge and the failure surfaces as an unauthorized data plane, not a plan error.
+  `opensearch.tf`'s collection name and `bedrock.tf`/`create_index.py`'s vector index name
+  both closed this way (MW-T6, opportunistic): each now derives from one `local` — the
+  independently-hardcoded literal is exactly how two resources referencing the same name
+  silently diverge, surfacing as an unauthorized data plane rather than a plan error. Apply
+  the same pattern to any new resource pair that shares a name.
 - Remote, locked state only — never commit `.tfstate` or `.terraform/`. No secrets in `.tf`
   or `.tfvars`.
 

@@ -6,13 +6,12 @@ Regenerate this at the end of every working session.
 
 ## Now
 
-**`implementing` — `S1b` (the pipeline rewrite).** `T2`, `T1` done. `T3` shipped as an open
-PR, awaiting merge. Two tasks left after it: `T6 → T7`.
+**`implementing` — `S1b` (the pipeline rewrite).** `T2`, `T1`, `T3` done. One task left:
+`T6 → T7`.
 
 ## Just done
 
-**`S1b`-T3 shipped as PR #80** (branch `ci/s1b-t3-scanner-jobs`), open and mergeable, not yet
-merged.
+**`S1b`-T3 merged as PR #80** (`578db4e`); its cursor sync merged as PR #81 (`5495bf2`).
 
 - Added `checkov` (`directory: .` — closes **F19**'s coverage gap, now scans `bootstrap/` +
   `modules/` + `environments/` instead of `modules/` only), `secrets-scan` (gitleaks, new
@@ -30,16 +29,15 @@ merged.
   `ci.yml` reads `GITHUB_TOKEN` for one step and nothing else — now two steps, plus the new
   `GITLEAKS_LICENSE` secret).
 - **Live CI on PR #80 confirmed every prediction.** `secrets-scan` and every pre-existing
-  check pass. `checkov` fails exactly on **S3**'s already-tracked findings (13 failures, all
-  mapping to F7/F8/F9 — nothing new). `zizmor` fails exactly on **F60**'s two findings
+  check pass. `checkov` failed exactly on **S3**'s already-tracked findings (13 failures, all
+  mapping to F7/F8/F9 — nothing new). `zizmor` failed exactly on **F60**'s two findings
   (`deploy.yml:27` excessive-permissions, plus a previously-unknown `dependabot-cooldown` on
-  `.github/dependabot.yml:3`, folded into F60), and its SARIF-upload step correctly shows
-  `outcome=skipped`, confirming the `advanced-security: false` fix works. Only `pr-title`
-  (the sole currently-required check) needs to pass for mergeability, and it does.
+  `.github/dependabot.yml:3`, folded into F60), and its SARIF-upload step correctly showed
+  `outcome=skipped`, confirming the `advanced-security: false` fix works.
 
 ## Next
 
-**Merge PR #80.** Then **`S1b`-T6 — purge every raw-output path.**
+**`S1b`-T6 — purge every raw-output path.**
 
 - Sweep `ci.yml` and `deploy.yml` for BR-D4 violations: no `set -x`, no `env` dump, no
   `aws sts get-caller-identity` echo, no `tofu output` without `-json | jq`, no `tofu show`
@@ -54,13 +52,18 @@ merged.
 
 ## Open gates and blockers
 
-**HITL Gate: OPEN — PR #80 awaiting human merge.** Do not auto-start `T6` before it lands;
-`T6` edits the same two workflow files `T3` just changed.
+**HITL Gate: NONE OPEN for T6.** Nothing blocks starting it unattended.
 
-**Separately, not blocking `T6`:** `S1b`-T7 cannot require `secrets-scan` or `zizmor` as
-currently planned without resolving or knowingly accepting **F59** (secrets-scan can never
-pass on a fork PR — not fixable from this repo) and **F60** (zizmor is red today on
-`deploy.yml`'s `id-token: write` plus a `dependabot-cooldown` warning). `T7`'s task body in
+**Separately, not a `T6` blocker:** both merges (#80, #81) each queued `deploy.yml`'s
+push-triggered `tofu-plan-main` → `tofu-apply`, per this repo's by-design
+every-merge-consumes-an-approval trade (`S1a`-T5). At least one is sitting in the
+`production` Environment's `waiting` state as of this cursor. That approval is the human's
+to give or decline and is unrelated to `S1b`'s remaining work.
+
+**`S1b`-T7 cannot require `secrets-scan` or `zizmor` as currently planned** without
+resolving or knowingly accepting **F59** (secrets-scan can never pass on a fork PR — not
+fixable from this repo) and **F60** (zizmor was red on `deploy.yml`'s `id-token: write`
+plus a `dependabot-cooldown` warning, both measured live). `T7`'s task body in
 `sprint_plan.md` carries the blocking note and the options.
 
 `glunk-works/global-bootstrap#7` (org-wide lock-table question) still awaits a response —

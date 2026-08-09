@@ -6,58 +6,70 @@ Regenerate this at the end of every working session.
 
 ## Now
 
-**`implementing` — `S1b` (the pipeline rewrite).** `T2`, `T1`, `T3`, `T6` done. `T7` — the
-**last task in the sprint** — is shipped, verified READY, and awaiting merge.
+**`implementing` — `S1b` (the pipeline rewrite).** All five tasks (`T2`, `T1`, `T3`, `T6`,
+`T7`) are merged. `PR #91` (the retry-logic fix) has also merged. The sprint's Definition of
+Done has **destroy and apply both proven, twice each, under the final shape** — only
+**`verify` is still outstanding.**
 
 ## Just done
 
-**`S1b`-T7 shipped as PR #86** (branch `ci/s1b-t7-required-checks`, commit `212ecc3`), open
-and `/pr-checks`-verified **READY**, not yet merged. Direction given: fix `F59`/`F60` at the
-cause rather than hold them out of the required list or accept the cost.
+`S1b`-T7 merged (F59/F60 closed at the cause; new finding `F61` on floating tool versions,
+unassigned). Then, working through the DoD's outstanding cycle:
 
-- **F59 closed.** `secrets-scan` no longer uses `gitleaks/gitleaks-action` — its own wrapper
-  code enforces a `GITLEAKS_LICENSE` secret for any org-owned repo, and GitHub withholds
-  every secret from a fork PR. It now runs the raw, MIT-licensed `gitleaks` CLI directly via
-  a pinned `ghcr.io/gitleaks/gitleaks` digest — no secret consumed at all. Verified locally
-  against this repo's real history (133 commits, no leaks) **and** in real CI on this PR.
-- **F60 closed.** `deploy.yml`'s workflow-level `id-token: write` moved to job-scoped grants
-  on its three credentialed jobs; `dependabot.yml` gained a 7-day `cooldown`. Verified
-  locally with the pinned `zizmor` image (zero findings) **and** in real CI.
-- `/critic-gate` ran both `security-critic` and `architect`. Both independently caught that
-  4 of the 5 newly-required checks resolve their tool version at `latest` by default —
-  `zizmor`'s was pinned in this same change (`1.29.0`); the other two
-  (`opentofu/setup-opentofu`'s `tofu_version`, `terraform-linters/setup-tflint`'s
-  `tflint_version`) are recorded as new finding **F61** rather than fixed here — a version
-  pin interacts with this repo's `required_version` constraints and the deferred `SD`
-  sprint's devcontainer-parity plan, a separate decision.
-- Also fixed: two stale comments (`deploy.yml`, `CLAUDE.md`) this same diff would have left
-  self-contradictory. `gitleaks`'s deliberate `--all` (every-branch, not just `main`) scan
-  scope was investigated (confirmed via `-l debug`) and documented as a considered tradeoff,
-  not silently accepted — narrowing it via `--log-opts` was considered and rejected as
-  riskier than the residual it would close.
-- **Sequence followed architect's explicit recommendation:** pushed the branch, watched all
-  6 checks go green in real CI **first**, then applied the live ruleset `PUT` (read-modify-
-  write, preserving all 4 existing rule types) so the PR's own required-checks state could be
-  observed matching the new ruleset before merge — confirmed via the rules endpoint (exact
-  6-value set match) and a green `ruleset-drift.yml` dispatch against the updated ruleset.
+- **Apply succeeded** (after one rejected attempt and one that failed on the vector index —
+  diagnosed live as AOSS access-policy propagation lag, not a misconfiguration; a third
+  no-op-touch retry succeeded, all 12 resources including the vector index).
+- **Root cause fixed**: `create_index.py`'s `AuthorizationException` handling now gets a
+  short, separately-bounded retry (2 attempts, 15s apart) so this self-heals next time,
+  without reopening `F46`'s original "hides a real error for minutes" problem.
+  `security-critic` proved the exit-code guarantee correct by exhaustive simulation over all
+  3⁶ failure sequences; three low-severity wording findings, all fixed in the same change.
+  Shipped as **PR #91** (rebuilt after the branch's original PR, #90, merged one commit
+  early — a real trap: pushing to an already-merged PR's branch fires no further CI).
+- **The full cycle then ran, twice over, human-driven:** `destroy-ai-lab` dispatch
+  (20:08–20:09 UTC, succeeded) → `PR #91`'s merge auto-triggered a rebuild `tofu-apply`
+  (20:19, since deploy.yml runs on every push and the lab was just empty — succeeded, all 12
+  resources again) → `destroy-ai-lab` dispatched again (20:30–20:31, succeeded). **Both
+  `destroy` and `apply` are now proven, twice each, under `T7`'s final job-scoped
+  permissions shape.** Confirmed: **no `RetrieveAndGenerate` verify call was made** in the
+  ~10-minute window the lab was live between the two destroys — that's the one DoD component
+  still open.
+- **BR-D4 near-miss, disclosed rather than glossed over:** a bare
+  `aws sts get-caller-identity` while diagnosing printed the account id and an SSO role ARN
+  into the session transcript — the identical incident this repo hit during `MW`-T6. Caught
+  and named; not repeated in the follow-up AWS CLI calls, all scoped to
+  `--query`/`--output text` returning only booleans or counts.
 
 ## Next
 
-**Merge PR #86.** `/pr-checks` already verified it READY — all 6 required checks
-(`pr-title`, `tofu-fmt`, `tofu-validate`, `tflint`, `secrets-scan`, `zizmor`) green.
+**Close `S1b`'s DoD: run the `verify` step.** The lab is currently torn down (post the second
+destroy), so this needs one more `apply` to have a live Knowledge Base to verify against.
+Present to the human, don't run unattended:
+1. Trigger another rebuild (a no-op `.tf` touch, same established pattern as PR #89/#90, or
+   any other merge — every push to `main` triggers `tofu-plan-main` → `tofu-apply`).
+2. Once live, run a `RetrieveAndGenerate` call (`test_rag.py`, locally under admin-SSO —
+   it's interactive) to satisfy the DoD's `verify` component.
+3. Then dispatch `destroy-ai-lab` once more to return to the accepted torn-down steady state
+   (`BR-D26`) — `S1b`'s DoD asks for the cycle in `destroy → apply → verify` order, and this
+   closes it cleanly with the lab left down afterward.
 
-**This is `S1b`'s last task.** Once merged, run **`/archive-sprint`** — but first re-check
-`sprint_plan.md`'s Definition of Done section for the `MW` re-run acceptance criterion (a
-fresh `destroy → apply → verify` cycle against the final `ci.yml`/`deploy.yml` shape) before
-declaring the sprint fully done; don't assume it was already satisfied without checking.
+**Alternative, if a fourth full cycle feels like overkill:** the human may reasonably judge
+that two successful destroy/apply pairs under the final shape is sufficient evidence and
+choose to explicitly waive the literal `verify` step — that's a call for them to make, not
+one to assume.
+
+Only after `verify` lands (or is explicitly waived) does `S1b` truly close, and
+`/archive-sprint` applies.
 
 **Model: `sonnet` / coder.**
 
 ## Open gates and blockers
 
-**HITL Gate: OPEN — PR #86 awaiting human merge.** The live branch-protection ruleset is
-**already updated and live** (not an open action — done deliberately before merge, per
-`S1b`'s Definition of Done). What's open is only the merge click.
+**HITL Gate: OPEN — the verify step above is human-watched** (sprint plan + BR-D2/BR-D25),
+same as any apply/destroy.
+
+**PR #88 (`docs/sync-cursor-s1b-t7-merged`) is OPEN but STALE — do not merge it as-is.** It
+predates this entire DoD-rebuild sequence. Close it unmerged.
 
 `glunk-works/global-bootstrap#7` (org-wide lock-table question) still awaits a response —
 informational, not blocking.
@@ -65,10 +77,16 @@ informational, not blocking.
 **F61** (floating tool versions on `tofu-fmt`/`tofu-validate`/`tflint`) has no sprint owner
 yet — flag it for whoever plans the next sprint.
 
+**Process lesson, not yet written into a doc — consider a `/retro`:** merging a PR while
+more commits are still being actively pushed to its branch is a real trap in this repo's
+flow. Squash-merge takes whatever was on the branch at merge time; anything pushed after
+fires no further CI, since the PR is already closed. Hit once this session (PR #90).
+
 ## Pointers
 
-- `docs/hardening_roadmap.md` — reference of record and threat model. `F59`/`F60` now
-  `✅ CLOSED`; new `F61` recorded. `S1b`'s status row still needs updating to `complete` —
-  do that in the post-merge cursor sync, matching the pattern used after `T3` and `T6`.
-- `sprints/S1_pipeline_hardening/sprint_plan.md` — Task 7 is the sprint's last task; its
-  Definition of Done section is the next thing to re-check.
+- `docs/hardening_roadmap.md` — reference of record and threat model. `F59`/`F60` closed,
+  `F61` recorded, `F46`'s row updated with this session's refinement. `S1b`'s status row
+  still says `implementing` — correct, don't mark it `complete` until `verify` lands or is
+  explicitly waived.
+- `sprints/S1_pipeline_hardening/sprint_plan.md` — Definition of Done section (the paragraph
+  starting `**`S1b` (~~T2, T1, T4, T3, T6, T7~~**`) is the authoritative text for what remains.

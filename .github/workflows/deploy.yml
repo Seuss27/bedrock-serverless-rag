@@ -23,8 +23,13 @@ on:
         required: true
         type: string
 
+# F60, closed 2026-08-09: id-token: write lived here at workflow level, which zizmor's
+# excessive-permissions audit flags regardless of whether every job in the file happens to
+# need it today -- a workflow-level grant means any job added later inherits it whether or
+# not it should. contents: read is the true shared default (every job checks out the repo);
+# id-token: write is now job-scoped below, on each of the three jobs that actually assumes an
+# AWS role.
 permissions:
-  id-token: write
   contents: read
 
 # F20/S1a-T5: two merges in quick succession must queue, not race, for the same state --
@@ -47,14 +52,17 @@ jobs:
   # so the approver has fresh evidence to read. No `needs:` on ci.yml's checks -- that file
   # is a separate `pull_request`-triggered workflow now, and GitHub Actions `needs:` cannot
   # span workflow files.
-  # ⚠️ ci.yml's checks are NOT required checks yet -- only `pr-title` is, until T7 adds
-  # them. Until then this repo's ruleset permits merging with every ci.yml job red
-  # (required_approving_review_count: 0, bypass_actors: []), so the human approval on
-  # tofu-apply below is, for this interval, the ONLY automated control standing in front
-  # of an apply -- not a second layer behind ci.yml. Read the plan summary accordingly.
+  # ✅ S1b-T7 (2026-08-09): ci.yml's tofu-fmt, tofu-validate, tflint, secrets-scan and zizmor
+  # are now required checks (ruleset.required_checks in .ai/project.yml, enforced live on the
+  # protected-integration-branches ruleset). The human approval on tofu-apply below is now a
+  # SECOND layer behind ci.yml's five, not the only automated control in front of an apply --
+  # unlike the interval this comment used to describe. Read the plan summary accordingly.
   tofu-plan-main:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     defaults:
       run:
         working-directory: environments/ai-lab
@@ -155,6 +163,9 @@ jobs:
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     environment: production
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     defaults:
       run:
         working-directory: environments/ai-lab
@@ -280,6 +291,9 @@ jobs:
       github.ref == 'refs/heads/main' &&
       github.event.inputs.confirm == 'destroy-ai-lab'
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
     defaults:
       run:
         working-directory: environments/ai-lab

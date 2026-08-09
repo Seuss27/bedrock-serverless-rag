@@ -7,18 +7,20 @@ name: PR title
 # the only message that survives, and therefore the only one worth enforcing. WIP commits
 # inside a branch stay free-form.
 #
-# WHY THIS IS ITS OWN WORKFLOW AND NOT A JOB IN deploy-ai-lab.yml — this is the load-bearing
-# part:
+# WHY THIS IS ITS OWN WORKFLOW AND NOT A JOB IN ci.yml/deploy.yml (S1b-T2 renamed the file
+# this comment originally cited, deploy-ai-lab.yml) — this is the load-bearing part:
 #   * A title check needs `edited` to fire, or a bad title could only be cleared by
 #     pushing a dummy commit.
-#   * But `edited` inside deploy-ai-lab.yml would let a prose-only title edit wake — and,
-#     under a cancelling concurrency group, CANCEL — an in-flight or already-green run of
-#     the heavier tofu jobs.
+#   * But `edited` inside ci.yml would let a prose-only title edit wake — and, under a
+#     cancelling concurrency group, CANCEL — an in-flight or already-green run of the
+#     heavier tofu jobs. (deploy.yml has no `pull_request` trigger at all as of S1b-T2, so
+#     the risk this bullet describes binds ci.yml specifically, not deploy.yml.)
 #   * A cancelled-then-replaced run can report `skipped`, and `skipped` satisfies a
 #     required check rather than failing it. The PR would then merge with the real gates
 #     having silently never run.
-# Keeping this separate means deploy-ai-lab.yml never sees `edited` at all, and this check
-# gates nothing downstream: a bad title costs a cheap re-run, never a skipped security gate.
+# Keeping this separate means neither ci.yml nor deploy.yml ever sees `edited` at all, and
+# this check gates nothing downstream: a bad title costs a cheap re-run, never a skipped
+# security gate.
 #
 # Required checks match by check-run name = job id, so the job below is bare `pr-title`
 # with no `name:` override (CLAUDE.md).

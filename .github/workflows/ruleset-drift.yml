@@ -7,8 +7,9 @@ name: Ruleset drift
 # (plus workflow_dispatch, since a cron-only trigger cannot be tested without waiting for
 # the cron) and fails loudly the moment they no longer match what S0 put in place.
 #
-# Deliberately NOT a required check and NOT a job in deploy-ai-lab.yml: a required check is
-# required only because the ruleset says so, so making this check itself required would
+# Deliberately NOT a required check and NOT a job in ci.yml or deploy.yml (S1b-T2 split the
+# file this comment originally cited, deploy-ai-lab.yml, into those two): a required check
+# is required only because the ruleset says so, so making this check itself required would
 # un-require it at the instant the ruleset it watches is deleted -- silently, on the exact
 # failure it exists to catch. It gates nothing here and is gated by nothing.
 #

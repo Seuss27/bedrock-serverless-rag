@@ -1,0 +1,102 @@
+name: CI
+
+# Uncredentialed by construction (S1b-T2): no job here holds id-token: write or any AWS
+# secret, so this file is safe to run on `pull_request` -- including from a fork -- for
+# arbitrary PR-branch code. Anything that needs AWS credentials belongs in deploy.yml, on
+# push to main, never here. No `paths:` filter on any trigger (F18): a required check on a
+# path-filtered workflow leaves a docs-only PR pending forever with no way to fix it from
+# inside the PR. No job below carries a `name:` override, for the same F18 reason -- the
+# check-run name GitHub matches against a required-checks list is the job id.
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  tofu-fmt:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: opentofu/setup-opentofu@v2
+      - run: tofu fmt -check -recursive
+
+  # Covers bootstrap/ as well as environments/ai-lab -- BR-D1 keeps CI from *applying*
+  # bootstrap/, not from *checking* it, and bootstrap/ holds F1/F2, the two worst findings
+  # in the repo. -backend=false needs no AWS credentials (CLAUDE.md's Local: OpenTofu
+  # section), which is what makes this job safe to run uncredentialed on a fork PR.
+  # ⚠️ ONE job, not a matrix: GitHub names a matrix job's check runs
+  # `tofu-validate (environments/ai-lab)` / `tofu-validate (bootstrap)`, never the bare
+  # `tofu-validate` T7 will require -- a matrix here would plant the exact `name:`-override
+  # deadlock this file's own header warns about, just via a different mechanism.
+  tofu-validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: opentofu/setup-opentofu@v2
+      - name: environments/ai-lab
+        working-directory: environments/ai-lab
+        run: |
+          set -euo pipefail
+          tofu init -backend=false
+          tofu validate
+      # !cancelled() rather than the default success(): a single job means an
+      # environments/ai-lab validate error would otherwise skip this step and hide a
+      # concurrent bootstrap error until the first is fixed and re-pushed.
+      - name: bootstrap
+        if: '!cancelled()'
+        working-directory: bootstrap
+        run: |
+          set -euo pipefail
+          tofu init -backend=false
+          tofu validate
+
+  tflint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: terraform-linters/setup-tflint@v6
+      # --recursive changes into each target directory before it looks for a config file,
+      # and does not walk up to find the repo root's .tflint.hcl from there (measured
+      # locally: bootstrap/ and modules/ pick up neither the aws plugin nor the two
+      # disabled rules without this). An explicit --config makes every directory resolve
+      # the same root file tflint --init already installed the aws plugin for.
+      # GITHUB_TOKEN on --init: plugin install pulls the release anonymously from the
+      # GitHub API otherwise, which can hit a shared-runner-IP rate limit -- harmless today
+      # but this becomes a required check in T7, where a rate-limit flake blocks a merge.
+      # contents: read is sufficient; a fork PR still gets a valid read-only token.
+      - name: Install tflint plugins
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: tflint --init --config="$GITHUB_WORKSPACE/.tflint.hcl"
+      - run: tflint --recursive --config="$GITHUB_WORKSPACE/.tflint.hcl"
+
+  # Carried over from deploy-ai-lab.yml's security-and-linting job (MW), which ran these
+  # BEFORE assuming AWS credentials for exactly this reason: a pull_request-triggered pip
+  # install is untrusted-dependency-execution surface, and it must never run with a live
+  # credential available. Here it never has one to begin with. Not in T7's required list:
+  # this repo has no pyproject.toml or ruff config yet (S5 adds the toolchain) -- requiring
+  # a check whose config doesn't exist is the S0 deadlock in miniature. Run it, don't gate it.
+  python-lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: environments/ai-lab
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-python@v7
+        with: {python-version: '3.11'}
+      - run: |
+          set -euo pipefail
+          pip install ruff==0.16.2 bandit==1.9.4
+          ruff check .
+          bandit -r .

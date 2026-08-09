@@ -1,10 +1,11 @@
-# No-op touch, MW-T6: deliberately triggers deploy-ai-lab.yml's path filter so the
-# CI-role apply half of the destroy -> apply -> RetrieveAndGenerate cycle runs. AWS is
-# fully empty as of the human-watched destroy (runs 31259407481, 31260054651,
-# 31260209345 -- the last one destroyed the KB execution role, the final resource);
-# a local admin-SSO plan confirmed `Plan: 12 to add, 0 to change, 0 to destroy` with no
-# drift or orphans first. No code change was otherwise required -- see PR #53 for the
-# same pattern used for the same reason.
+# No-op touch, S1b-T7: deliberately triggers deploy.yml's tofu-plan-main -> tofu-apply so
+# S1b's Definition of Done can be satisfied -- a destroy -> apply -> verify cycle,
+# human-watched, run against the FINAL split ci.yml/deploy.yml shape (all five required
+# checks live, F59/F60's fixes, job-scoped deploy.yml permissions). Nothing since T2 deleted
+# deploy-ai-lab.yml has exercised this; the last real cycle (MW-T6) proved a file that no
+# longer exists. AWS is empty as of the 2026-08-08 teardown (BR-D26); this apply is the
+# create half, dispatch destroy-ai-lab afterward for the destroy half. No code change was
+# otherwise required -- see PR #53/#64 for the same pattern used for the same reason.
 module "rag_backend" {
   source = "../../modules/aws-bedrock-rag"
 

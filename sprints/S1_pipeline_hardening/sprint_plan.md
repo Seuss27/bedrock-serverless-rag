@@ -687,6 +687,21 @@ admin-capable apply until S2 lands.
     it omits, which would silently delete S0's work.
     Do **not** add `iac-diff-guard` as a required check — it is a policy assertion about the
     PR body, and a required check that a fork or a bot cannot satisfy strands PRs.
+
+    ⚠️ **BLOCKED as written, discovered 2026-08-09 by `/critic-gate` on `T3` — `secrets-scan`
+    and `zizmor` cannot both go straight into the required five yet. Read `F59` and `F60`
+    before running this task.** `F59`: `secrets-scan` hard-fails on any fork PR (an org-owned
+    repo always enforces `GITLEAKS_LICENSE`, and GitHub withholds every secret from a fork —
+    not fixable from this repo). `F60`: `zizmor` is red on **every** PR today, not just forks —
+    its default scan reaches `deploy.yml`'s workflow-level `id-token: write`, which trips its
+    own `excessive-permissions` audit, and the action fails on any finding at any severity.
+    **This task must resolve or knowingly accept each before requiring the check it names**,
+    the same choice `checkov` already got two paragraphs up: hold it out of the required list,
+    fix the underlying cause (job-scope `deploy.yml`'s permissions for `F60`; nothing available
+    for `F59`), or accept and record the cost explicitly. Silently requiring both as this task's
+    prose still literally says would ship a required check that starts red and one class of PR
+    that can never pass — the exact BR-D9 deadlock the ruleset-append step above exists to
+    avoid triggering by a different route.
   - **Target Files:** `.ai/project.yml`, `.github/workflows/ruleset-drift.yml`
   - **Acceptance Criteria:** `gh api repos/glunk-works/bedrock-serverless-rag/rules/branches/main`
     lists ~~8~~ **6** contexts (`pr-title` + the ~~seven~~ **five** above) and still all four

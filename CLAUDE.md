@@ -147,9 +147,15 @@ if no gate existed on a repo that has one.
   can push a branch can edit the `run:` block and get `iam:CreateRole` on `*`** in the account
   holding bounty-infra's findings archive.~~ **The EXPLOITABLE INSTANCE closed 2026-08-08 by
   `S1b`-T2 — `F3` itself did NOT.** `deploy-ai-lab.yml` no longer exists — it split into
-  `ci.yml` (uncredentialed: no `id-token`, no AWS credential — it does read
-  `secrets.GITHUB_TOKEN` for one step, GitHub's own auto-issued read-only token, not an
-  exception to this rule — safe on a fork PR) and `deploy.yml`
+  `ci.yml` (uncredentialed: no `id-token`, no AWS credential — it reads
+  `secrets.GITHUB_TOKEN` for two steps, GitHub's own auto-issued read-only token, not an
+  exception to this rule) and `deploy.yml`
+  *(Corrected 2026-08-09 by `S1b`-T3: `ci.yml` now also carries `secrets.GITLEAKS_LICENSE`
+  — a real, non-`GITHUB_TOKEN` secret, the first this file has held — so "safe on a fork
+  PR" no longer holds file-wide. The AWS-credential half of the claim is untouched: still
+  zero `id-token`, still zero AWS `secrets.*`. What changed is narrower and tracked as
+  `F59` — a fork PR gets no org secrets, so `secrets-scan` specifically hard-fails there,
+  which matters once `S1b`-T7 tries to make it a required check, not before.)*
   (credentialed, triggers are `push: branches: [main]` + `workflow_dispatch` only, **no
   `pull_request` trigger at all**). This repo now has **zero credentialed `pull_request`
   jobs**, for the first time in its history. **But nothing at the IAM layer moved**: the trust

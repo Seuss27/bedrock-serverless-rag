@@ -6,20 +6,19 @@ Regenerate this at the end of every working session.
 
 ## Now
 
-**`implementing` — `S1b` (the pipeline rewrite).** `T2`, `T1`, `T3`, `T6` done. One task
-left: `T7` — and it opens with a decision, not a mechanical execute.
+**`implementing` — `S1b` (the pipeline rewrite).** `T2`, `T1`, `T3`, `T6` done. `T7` is the
+**last task in the sprint** — and it opens with a decision, not a mechanical execute.
 
 ## Just done
 
-**`S1b`-T6 shipped as PR #83** (branch `ci/s1b-t6-purge-raw-output`, commit `a2635e0`), open
-and mergeable, not yet merged.
+**`S1b`-T6 merged as PR #83** (`9c1ac27`); its cursor sync merged as PR #84 (`2b4dd97`).
 
 - `T6` asked for a BR-D4 raw-output sweep of `ci.yml`/`deploy.yml`, plus a live test of
   whether `zizmor` actually catches an `actions/github-script` injection (the repo has no
   such step to check directly). **The sweep found nothing to fix** — every check named
   (`set -x`, env dumps, `aws sts get-caller-identity`, bare `tofu output`, `tofu show` of
   state, `set -euo pipefail` on all 9 multi-line `run:` blocks, no `${{ }}` outside safe
-  positions across all four workflow files) was already compliant. This PR is **docs-only** —
+  positions across all four workflow files) was already compliant. The PR was **docs-only** —
   no `.github/workflows/` file changed.
 - **The zizmor question was tested, not assumed.** The exact pinned `zizmor` image this
   repo's CI uses was pulled and run locally via Docker (no need to plant a real injection
@@ -34,31 +33,40 @@ and mergeable, not yet merged.
   `F60` leaves that job unconditionally red regardless, so it's a tested **detector** today,
   not yet a gate. Both fixed. Also fixed: the roadmap's `S1b` status row, stale at `planned`
   since `T2` merged three tasks ago.
-- Live CI on PR #83 confirmed the docs-only nature: `checkov`/`zizmor` fail on exactly the
-  same already-known findings as PR #80 — nothing new.
 
 ## Next
 
-**Merge PR #83.** Then **`S1b`-T7 — the sprint's last task**, appending this sprint's checks
-to `ruleset.required_checks`, `.ai/project.yml`, and `ruleset-drift.yml`'s check list (all
+**`S1b`-T7 — the sprint's last task.** Appends this sprint's checks to
+`ruleset.required_checks`, `.ai/project.yml`, and `ruleset-drift.yml`'s check list (all
 three in one PR, BR-D9).
 
-⚠️ **This is not a mechanical append.** `T7`'s task body now carries a blocking note (added
-by `T3`'s own `/critic-gate` pass): `secrets-scan` and `zizmor` cannot both go straight into
-the required five as originally written. Read **F59** (secrets-scan fails on any fork PR —
-not fixable from this repo) and **F60** (zizmor is red today on `deploy.yml:27`'s
-excessive-permissions plus a `dependabot-cooldown` warning) and `sprint_plan.md`'s Task 7
-body before running `gh api -X PUT` — each needs resolving or knowingly accepting first.
+⚠️ **This is not a mechanical append.** `T7`'s task body carries a blocking note (added by
+`T3`'s own `/critic-gate` pass): `secrets-scan` and `zizmor` cannot both go straight into
+the required five as originally written. **Present the options to the human and wait for a
+choice** before touching the ruleset:
+- **F59** — `secrets-scan` can never pass a fork PR (`GITLEAKS_LICENSE` withheld from forks
+  by GitHub itself, not fixable from this repo). Hold it out of `required_checks`, or accept
+  the fork-PR cost explicitly.
+- **F60** — `zizmor` is red today on `deploy.yml:27`'s excessive-permissions finding plus a
+  `dependabot-cooldown` warning. Scope `zizmor`'s `inputs:` away from `deploy.yml`,
+  job-scope `deploy.yml`'s permission (likely `S2`'s work) and fix the cooldown, set a
+  `min-severity`, or accept-and-suppress with a justified `zizmor.yml` citing F60.
+
+Once resolved: append the agreed list, then `gh api -X PUT` the live ruleset — read it first,
+a partial-body `PUT` drops the rules it omits.
 
 **Model: `sonnet` / coder.**
 
 ## Open gates and blockers
 
-**HITL Gate: OPEN — PR #83 awaiting human merge.** Do not auto-start `T7` before it lands.
+**HITL Gate: OPEN — `S1b`-T7 needs a human decision on F59/F60 before any ruleset edit.**
+Do not auto-start the `gh api -X PUT` step; present the options above and wait.
 
-**Separately, once `T7` is reached:** it needs a human decision on F59/F60 (hold the checks
-out of the required list, fix the underlying cause, or accept the cost) before the
-ruleset-append step — not an unattended-executable task even after PR #83 merges.
+**Once `T7` lands, `S1b` is COMPLETE** — the next session should consider `/archive-sprint`.
+
+Both PR #83 and #84's merges each queued `deploy.yml`'s push-triggered `tofu-plan-main` →
+`tofu-apply` again (by-design, every merge does this) — unrelated to `S1b`, a human decision,
+not yet acted on as of this cursor.
 
 `glunk-works/global-bootstrap#7` (org-wide lock-table question) still awaits a response —
 informational, not blocking.
@@ -66,6 +74,5 @@ informational, not blocking.
 ## Pointers
 
 - `docs/hardening_roadmap.md` — reference of record and threat model.
-- `sprints/S1_pipeline_hardening/sprint_plan.md` — **top banner first.** Task 6's body now
-  carries the full sweep + injection-test evidence trail; Task 7's body carries the blocking
-  F59/F60 note.
+- `sprints/S1_pipeline_hardening/sprint_plan.md` — **top banner first.** Task 7's body
+  carries the blocking F59/F60 note with the resolution options.

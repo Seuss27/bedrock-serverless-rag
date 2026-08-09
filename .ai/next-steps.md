@@ -19,13 +19,23 @@ unassigned). Then, working through the DoD's outstanding cycle:
 - **Apply succeeded** (after one rejected attempt and one that failed on the vector index —
   diagnosed live as AOSS access-policy propagation lag, not a misconfiguration; a third
   no-op-touch retry succeeded, all 12 resources including the vector index).
-- **Root cause fixed**: `create_index.py`'s `AuthorizationException` handling now gets a
-  short, separately-bounded retry (2 attempts, 15s apart) so this self-heals next time,
+- **Root cause fixed**: `create_index.py`'s `AuthorizationException` handling got a short,
+  separately-bounded retry (2 attempts, 15s apart) so this self-heals in the common case,
   without reopening `F46`'s original "hides a real error for minutes" problem.
   `security-critic` proved the exit-code guarantee correct by exhaustive simulation over all
   3⁶ failure sequences; three low-severity wording findings, all fixed in the same change.
   Shipped as **PR #91** (rebuilt after the branch's original PR, #90, merged one commit
   early — a real trap: pushing to an already-merged PR's branch fires no further CI).
+  **Update, same day:** merging PR #92 (a docs-only cursor sync) itself re-triggered a
+  rebuild `tofu-apply` — every push to `main` does, regardless of path — and this time the
+  2×15s budget wasn't enough; a third occurrence, diagnosed live and confirmed genuine
+  propagation lag again (not misconfiguration). Rather than tune the same fixed short
+  budget again, replaced it: `AuthorizationException` now retries with an increasing delay
+  (5s doubling to a 60s cap) against a **5:15 total elapsed budget**, sized to AWS's own
+  documented worst case (`serverless-data-access.html`: "about a minute" typical, "contact
+  Support" past 5 minutes) plus a small margin. This explicitly replaces `MW`-T3's
+  under-a-minute criterion for this one exception type — see `F46`'s roadmap row for the
+  decision record. Not yet re-run against a live apply.
 - **The full cycle then ran, twice over, human-driven:** `destroy-ai-lab` dispatch
   (20:08–20:09 UTC, succeeded) → `PR #91`'s merge auto-triggered a rebuild `tofu-apply`
   (20:19, since deploy.yml runs on every push and the lab was just empty — succeeded, all 12
@@ -42,16 +52,23 @@ unassigned). Then, working through the DoD's outstanding cycle:
 
 ## Next
 
-**Close `S1b`'s DoD: run the `verify` step.** The lab is currently torn down (post the second
-destroy), so this needs one more `apply` to have a live Knowledge Base to verify against.
-Present to the human, don't run unattended:
-1. Trigger another rebuild (a no-op `.tf` touch, same established pattern as PR #89/#90, or
-   any other merge — every push to `main` triggers `tofu-plan-main` → `tofu-apply`).
-2. Once live, run a `RetrieveAndGenerate` call (`test_rag.py`, locally under admin-SSO —
-   it's interactive) to satisfy the DoD's `verify` component.
-3. Then dispatch `destroy-ai-lab` once more to return to the accepted torn-down steady state
-   (`BR-D26`) — `S1b`'s DoD asks for the cycle in `destroy → apply → verify` order, and this
-   closes it cleanly with the lab left down afterward.
+**Close `S1b`'s DoD: run the `verify` step.** **Correction — the lab is NOT currently torn
+down.** Merging PR #92 (docs-only) itself re-triggered a rebuild `tofu-apply` (every push to
+`main` does, regardless of path); that apply ran for real (not a declined approval — run
+`31334750838`, confirmed via the Actions API) and got through 11 of 12 resources before
+failing on the vector index with the third `AuthorizationException` occurrence. **No
+`destroy-ai-lab` has run since** — the collection is `ACTIVE` right now (confirmed directly
+against AWS, read-only, admin-SSO), billing its OCU floor. Present to the human, don't run
+unattended:
+1. Push the sliding-window retry fix (this session's `create_index.py`/`automation.tf`
+   change) to `main`. OpenTofu will see 11 of 12 resources already matching and only retry
+   the tainted `init_vector_schema` resource — not a full 12-resource rebuild.
+2. Once the index exists, run a `RetrieveAndGenerate` call (`test_rag.py`, locally under
+   admin-SSO — it's interactive) to satisfy the DoD's `verify` component.
+3. Then dispatch `destroy-ai-lab` to return to the accepted torn-down steady state
+   (`BR-D20`) — `S1b`'s DoD asks for the cycle in `destroy → apply → verify` order; this
+   closes it with the lab left down afterward, same end state as originally planned, just a
+   different starting point than this file previously claimed.
 
 **Alternative, if a fourth full cycle feels like overkill:** the human may reasonably judge
 that two successful destroy/apply pairs under the final shape is sufficient evidence and

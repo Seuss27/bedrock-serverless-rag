@@ -79,72 +79,125 @@ index_body = {
 max_retries = 6
 retry_delay = 45  # Wait n seconds between attempts
 
-# AuthorizationException gets its OWN short, separately-bounded retry -- not the
-# max_retries/retry_delay loop above. Observed twice now (S1b-T7's DoD rebuild): a data-
-# access-policy this same apply had *just* created was rejected 1.6s after its own creation
+
+def _create_index_once():
+    """One attempt: delete the index if it already exists, then create it. Raises on
+    failure -- callers decide whether/how to retry."""
+    if client.indices.exists(index=index_name):
+        client.indices.delete(index=index_name)
+        print(f"Deleted existing index: '{index_name}'")
+    client.indices.create(index=index_name, body=index_body)
+    print(f"Success! Index '{index_name}' created with FAISS engine.")
+
+
+# AuthorizationException gets its OWN sliding-window retry, self-contained and independent
+# of the outer max_retries/retry_delay loop above (that loop is for TransportError-class
+# eventual consistency; a 403 is a different signal). Observed three times now (twice during
+# S1b-T7's DoD rebuild, once during the DoD verify cycle that followed it): a data-access-
+# policy this same apply had *just* created was rejected shortly after its own creation
 # completed, then succeeded on a plain retry once AOSS's data plane caught up -- propagation
-# lag, not a wrong principal (both aoss:APIAccessAll and the policy's Principal list were
-# confirmed correct against live AWS while diagnosing). A genuinely wrong principal still
-# can never resolve by waiting (F46's original finding, unchanged) -- so this stays short
-# and separate from the general loop rather than reusing its 6x45s budget, which would hide
-# a real config error for minutes exactly as F46 warned. Two retries, 15s apart: enough to
-# absorb propagation lag, an order of magnitude faster than the general loop to fail on a
-# genuine misconfiguration.
-auth_max_retries = 2
-auth_retry_delay = 15  # seconds
-auth_attempts = 0
+# lag, not a wrong principal (aoss:APIAccessAll and the policy's Principal list were
+# confirmed correct against live AWS every time). A genuinely wrong principal still can
+# never resolve by waiting (F46's original finding, unchanged).
+#
+# AWS's own docs (serverless-data-access.html) state "about a minute" is the typical lag
+# after creating a data access policy, and to contact Support if it exceeds 5 minutes. So
+# this retries with an increasing delay (starting at AUTH_RETRY_INITIAL_DELAY, doubling up
+# to a AUTH_RETRY_MAX_DELAY-second cap per step) against a total elapsed budget of
+# AUTH_RETRY_BUDGET_SECONDS = 5:15 -- comfortably past AWS's own documented worst case, with
+# a small margin, without drifting into "something else is wrong" territory. That 5:15 is a
+# SLEEP budget, not a hard wall-clock ceiling: the last retry can still start just inside the
+# budget and then run for up to the client's own `timeout=300`, and if this window is
+# entered only after the general loop above already burned through TransportErrors, the
+# composite worst case is that 6x45s (270s) PLUS this 315s -- ~9 minutes, not 5:15. Still
+# bounded, still far short of F46's original unbounded/mischaracterized ~12-minute hang, but
+# the honest number is ~9 minutes in that combined case, not the 5:15 this window uses alone.
+#
+# This REPLACES `MW`-T3's flat "an authorization failure exits in under a minute" criterion
+# for THIS specific exception. The first two occurrences were fixed with a flat 2x15s retry;
+# the third showed that budget wasn't enough, and a 3x15s widen was drafted but never
+# shipped -- both were the wrong number to be chasing, since AWS's own docs already state a
+# bigger one. F46's original worry was a *permanently*-wrong permission being retried
+# blindly for ~12 minutes with a message that mischaracterized it as transient; this budget
+# avoids that by (a) being bounded, at a ceiling tied to AWS's own documented behavior
+# rather than an arbitrary one, and (b) saying so plainly on every attempt, so a long run
+# reads as "waiting out a documented window," not a silent hang -- (b) requires unbuffered
+# stdout, which is why `automation.tf`'s `local-exec` now sets `PYTHONUNBUFFERED=1`; Python
+# block-buffers stdout by default when piped, which would otherwise deliver every print in
+# this function in one burst at exit, making a multi-minute wait look exactly like a hang.
+# See F46's roadmap row for the decision record. The general 6x45s loop below is unchanged
+# and still fails fast on anything that isn't a TransportError-family exception.
+AUTH_RETRY_BUDGET_SECONDS = 315  # 5:15
+AUTH_RETRY_INITIAL_DELAY = 5  # seconds
+AUTH_RETRY_MAX_DELAY = 60  # seconds -- cap the per-step wait so the window keeps checking
+# in periodically even late in the budget, rather than sleeping through most of it in one go
+
+
+def _retry_after_authorization_exception():
+    """Called on the FIRST AuthorizationException. Owns its own increasing-delay retry
+    loop against a 5:15 wall-clock budget, independent of the outer loop's attempt count.
+    Always terminates the process: exit(0) on eventual success, exit(1) once the budget is
+    exhausted or a non-TransportError exception occurs."""
+    start = time.monotonic()  # not time.time(): a wall-clock step (NTP) must not shrink or
+    # stretch a duration budget
+    delay = AUTH_RETRY_INITIAL_DELAY
+    attempts = 1  # the caller's own attempt, which raised the exception that got us here
+    while True:
+        elapsed = time.monotonic() - start
+        remaining = AUTH_RETRY_BUDGET_SECONDS - elapsed
+        if remaining <= 0:
+            print(
+                f"Not authorized to manage the OpenSearch Serverless index after "
+                f"{attempts} attempts over {int(elapsed)}s (budget: "
+                f"{AUTH_RETRY_BUDGET_SECONDS}s / 5:15). That is past AWS's own documented "
+                "worst case for access-policy propagation, so this is treated as a genuine "
+                "permissions problem, not propagation lag -- check the collection's "
+                "data-access-policy principal and the caller's aoss:APIAccessAll grant."
+            )
+            sys.exit(1)
+
+        wait = min(delay, remaining)
+        print(
+            f"Attempt {attempts} not authorized yet ({int(elapsed)}s elapsed of "
+            f"{AUTH_RETRY_BUDGET_SECONDS}s budget). AWS's own docs say AOSS access-policy "
+            "propagation is typically ~1 minute, up to 5 -- waiting "
+            f"{int(wait)}s before attempt {attempts + 1}."
+        )
+        time.sleep(wait)
+        attempts += 1
+        try:
+            _create_index_once()
+            sys.exit(0)  # Tell OpenTofu the script was 100% successful
+        except TransportError:
+            # Covers AuthorizationException too (it subclasses TransportError in
+            # opensearchpy) as well as a plain connection blip or a 429/503 mid-warm-up.
+            # Once we're already in this window, every TransportError-family exception is
+            # an eventual-consistency signal, not just the 403 that got us here -- treating
+            # only AuthorizationException as retryable would silently drop the general
+            # loop's TransportError coverage for the rest of the run, since this function
+            # never returns to it.
+            delay = min(delay * 2, AUTH_RETRY_MAX_DELAY)
+            continue
+        except Exception as e:  # noqa: BLE001 -- BR-D4: never print str(e); see the
+            # matching comment on the outer loop's own catch-all below.
+            print(f"Attempt {attempts} failed: {type(e).__name__} (not retrying)")
+            sys.exit(1)
+
 
 for attempt in range(max_retries):
     try:
         print(f"Attempt {attempt + 1}: Checking OpenSearch index...")
-        if client.indices.exists(index=index_name):
-            client.indices.delete(index=index_name)
-            print(f"Deleted existing index: '{index_name}'")
-
-        response = client.indices.create(index=index_name, body=index_body)
-        print(f"Success! Index '{index_name}' created with FAISS engine.")
+        _create_index_once()
         sys.exit(0)  # Tell OpenTofu the script was 100% successful
 
     except AuthorizationException:
-        auth_attempts += 1
-        # Both budgets must have room: auth_attempts guards against masking a real
-        # misconfiguration for too long; `attempt < max_retries - 1` guards against the
-        # outer loop ending mid-sleep with no exit() call, which would let the script fall
-        # off the end and exit 0 -- a false success OpenTofu would trust.
-        if auth_attempts <= auth_max_retries and attempt < max_retries - 1:
-            print(
-                f"Attempt {attempt + 1} failed: not authorized to manage the OpenSearch "
-                "Serverless index yet. Retrying in case this is AOSS access-policy "
-                f"propagation lag on a policy created moments ago ({auth_max_retries - auth_attempts + 1} "
-                f"short retr{'y' if auth_max_retries - auth_attempts + 1 == 1 else 'ies'} left, "
-                f"{auth_retry_delay}s apart)."
-            )
-            time.sleep(auth_retry_delay)
-        elif auth_attempts <= auth_max_retries:
-            # The outer loop ran out of attempts (attempt == max_retries - 1) before the
-            # auth budget did -- e.g. several TransportErrors used up most of max_retries
-            # and this 403 only showed up on the last one. auth_attempts - 1 retries
-            # actually ran (possibly zero), so there is no basis to call this "not
-            # propagation lag" -- only that time ran out to find out.
-            print(
-                f"Attempt {attempt + 1} failed: not authorized to manage the OpenSearch "
-                "Serverless index, and the outer retry budget ran out before this could be "
-                f"distinguished from propagation lag ({auth_attempts - 1} short auth "
-                "retries actually ran). Exiting without further retries."
-            )
-            sys.exit(1)
-        else:
-            # Survived auth_max_retries short retries and is still a 403: the caller's
-            # IAM/data-access-policy grant is genuinely wrong, not propagation lag. This
-            # cannot resolve by waiting longer.
-            print(
-                f"Attempt {attempt + 1} failed: not authorized to manage the OpenSearch "
-                f"Serverless index, and it did not resolve after {auth_attempts - 1} short "
-                "retries. This is a permissions problem, not propagation lag -- check the "
-                "collection's data-access-policy principal and the caller's "
-                "aoss:APIAccessAll grant. Exiting without further retries."
-            )
-            sys.exit(1)
+        print(
+            f"Attempt {attempt + 1} failed: not authorized to manage the OpenSearch "
+            "Serverless index yet. Handing off to the sliding-window retry (up to 5:15) "
+            "in case this is AOSS access-policy propagation lag on a policy created "
+            "moments ago."
+        )
+        _retry_after_authorization_exception()  # never returns -- always exit()s
 
     except TransportError as e:
         # Do not print str(e): opensearchpy errors can embed the collection endpoint

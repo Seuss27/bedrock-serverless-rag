@@ -815,6 +815,16 @@ exercises the gate *and* the split together, which is where a logic error would 
 **check which step is actually slow before reading elapsed time as stuck** — that misread
 caused a premature cancellation during `MW`-T6.*
 
+**✅ DONE — 2026-08-09.** The cycle ran more than once before landing clean: `destroy-ai-lab`
+succeeded twice, and `tofu-apply` succeeded once against the final shape only after a
+same-day fix (PR #93, `F46`) replaced a too-short `AuthorizationException` retry with an
+AWS-timed sliding window — the first two apply attempts against this shape failed on the
+vector-index step for exactly the propagation-lag reason that fix addresses. The last cycle,
+run clean end-to-end: `destroy-ai-lab` (human-watched) → merging PR #93 auto-triggered
+`tofu-apply` (all 12 resources, no manual retry needed) → a real `RetrieveAndGenerate` call
+via `test_rag.py` succeeded with no `ClientError` → `destroy-ai-lab` dispatched again,
+confirmed clean against live AWS (no AOSS collections, no Knowledge Bases). `S1b` is closed.
+
 **⚠️ `/way-of-working:critic-gate` is not optional on this sprint, and the reason is
 specific.** No critic-gate pass ran on **any** of `MW`'s four PRs, two of which widened
 `bootstrap/` IAM permissions. This repo has **no CI review gate** (`review.ci_gate` is `null`

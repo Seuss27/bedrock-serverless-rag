@@ -668,6 +668,48 @@ admin-capable apply until S2 lands.
     confirm it against a deliberately-planted test case before relying on it instead of the
     grep, and record which one is the control.
 
+    ✅ **DONE 2026-08-09.** Both the raw-output sweep and the `github-script` verification are
+    complete, and neither required a code change — everything named above was already
+    compliant, carried forward correctly by `T1`/`T2`/`T3`/`S1a`-T5.
+    - `set -x`, an `env`/`printenv` dump, `aws sts get-caller-identity`, and `tofu output`
+      without `-json | jq`: **zero matches** in `ci.yml` or `deploy.yml`.
+    - `tofu show` appears three times: two are `-json tfplan > plan.json` (piped to `jq`,
+      already the pattern this task asks for). The third — `destroy-ai-lab`'s
+      `summary="$(tofu show -no-color tfplan)"`, filtered through
+      `grep -E '^(Plan:|No changes\.|  # )'` before it reaches the log — is a plan-FILE
+      render captured into a variable and never printed unfiltered, not a `tofu show` of
+      live state; it was already reviewed and accepted as "a different summarizer, equally
+      value-free" (`F16`'s roadmap entry, `S1a`-T5). Not this task's to re-litigate.
+    - `grep -n '\${{' .github/workflows/*.yml` (run against **all four** workflow files, not
+      only the two Target Files): every match sits in `env:`, `with:`, `concurrency:`, or a
+      comment — none inside a `run:` block. Confirmed programmatically, not by eye: a script
+      located every multi-line `run: |` block in `ci.yml`/`deploy.yml` (9 total — 3 in
+      `ci.yml`, 6 in `deploy.yml`) and checked its first body line — all 9 are
+      `set -euo pipefail`.
+    - No `actions/github-script` step exists anywhere in this repo today, so the
+      `grep -A20` check has nothing to find. Rather than leave the control unverified until
+      the day one is added, **the claim was tested**: the exact pinned `zizmor` image this
+      repo's CI uses (`ghcr.io/zizmorcore/zizmor@sha256:863026d54f91…`, `v1.29.0`) was run
+      locally (Docker, not GitHub Actions — no need to open a public PR on this public repo
+      just to plant a throwaway vulnerability) against a scratch workflow containing
+      `actions/github-script` with `${{ github.event.pull_request.title }}` inlined straight
+      into `script:`. Result: `error[template-injection]: code injection via template
+      expansion … may expand into attacker-controllable code`, confidence **High**. Also read
+      `zizmor`'s own `template_injection.rs` source: its action-injection sink list is derived
+      from CodeQL's models and explicitly includes `actions/github-script`'s `script:` field
+      — the live result matches the documented mechanism, not a fluke.
+    - **The control is `zizmor`'s `template-injection` audit, not the grep — but "control"
+      means *detects*, not yet *enforces*.** It already runs on every PR via `ci.yml`'s
+      `zizmor` job and would flag a real `github-script` injection the same way it just
+      flagged the planted one. What it can't do yet is block a merge over that finding:
+      **F60** has that job unconditionally red on every PR already (two unrelated findings),
+      and `zizmor-action` exits non-zero on any finding at any severity regardless of what
+      else is present — so today a real injection would not change the job's red/green state,
+      only its content. Enforcement arrives with whatever `T7` does to close F60 and add this
+      check to the required list; until then, `zizmor` is the tested detector, not yet the
+      gate. The grep in this task's acceptance criteria stays as a cheap, zero-dependency
+      check for anyone auditing by hand in the meantime.
+
 - **Task 7: Update the drift detector and the schema**
   - **Description:** Append this sprint's new gating checks to the ruleset, to
     `ruleset.required_checks` in `.ai/project.yml`, and to the check list inside

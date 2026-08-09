@@ -120,13 +120,26 @@ for attempt in range(max_retries):
                 f"{auth_retry_delay}s apart)."
             )
             time.sleep(auth_retry_delay)
-        else:
-            # Survived auth_max_retries short retries (or ran out of outer attempts) and
-            # is still a 403: the caller's IAM/data-access-policy grant is genuinely wrong,
-            # not propagation lag. This cannot resolve by waiting longer.
+        elif auth_attempts <= auth_max_retries:
+            # The outer loop ran out of attempts (attempt == max_retries - 1) before the
+            # auth budget did -- e.g. several TransportErrors used up most of max_retries
+            # and this 403 only showed up on the last one. auth_attempts - 1 retries
+            # actually ran (possibly zero), so there is no basis to call this "not
+            # propagation lag" -- only that time ran out to find out.
             print(
                 f"Attempt {attempt + 1} failed: not authorized to manage the OpenSearch "
-                f"Serverless index, and it did not resolve after {auth_attempts} short "
+                "Serverless index, and the outer retry budget ran out before this could be "
+                f"distinguished from propagation lag ({auth_attempts - 1} short auth "
+                "retries actually ran). Exiting without further retries."
+            )
+            sys.exit(1)
+        else:
+            # Survived auth_max_retries short retries and is still a 403: the caller's
+            # IAM/data-access-policy grant is genuinely wrong, not propagation lag. This
+            # cannot resolve by waiting longer.
+            print(
+                f"Attempt {attempt + 1} failed: not authorized to manage the OpenSearch "
+                f"Serverless index, and it did not resolve after {auth_attempts - 1} short "
                 "retries. This is a permissions problem, not propagation lag -- check the "
                 "collection's data-access-policy principal and the caller's "
                 "aoss:APIAccessAll grant. Exiting without further retries."

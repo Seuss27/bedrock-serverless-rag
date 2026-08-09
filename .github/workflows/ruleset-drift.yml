@@ -54,11 +54,12 @@ jobs:
                  | .parameters.required_status_checks[].context]
           ' <<<"$rules")
 
-          # This list mirrors .ai/project.yml's ruleset.required_checks. It is `pr-title`
-          # only for now (S0-T4); every later sprint that appends a required check updates
-          # this list, and .ai/project.yml, in the SAME pull request.
+          # This list mirrors .ai/project.yml's ruleset.required_checks. S1b-T7 appended five:
+          # tofu-fmt, tofu-validate, tflint, secrets-scan, zizmor (checkov and tofu-plan are
+          # deliberately absent -- sprint_plan.md Task 7). Every later sprint that appends a
+          # required check updates this list, and .ai/project.yml, in the SAME pull request.
           missing_checks=()
-          for c in pr-title; do
+          for c in pr-title tofu-fmt tofu-validate tflint secrets-scan zizmor; do
             if ! jq -e --arg c "$c" 'index($c) != null' <<<"$contexts" >/dev/null; then
               missing_checks+=("$c")
             fi
@@ -97,4 +98,4 @@ jobs:
             exit 1
           fi
 
-          echo "OK: ruleset intact -- 4 rule types, 1 required check, parameters match. (bypass_actors NOT checked -- see file header.)"
+          echo "OK: ruleset intact -- 4 rule types, 6 required checks, parameters match. (bypass_actors NOT checked -- see file header.)"

@@ -123,22 +123,44 @@ jobs:
           soft_fail: false
           output_format: cli
 
-  # Full history: gitleaks scans the base^..head commit range, which needs commits this PR's
-  # default shallow clone would not have. gitleaks-action hardcodes --redact on every
-  # invocation, so a real hardcoded secret fails this check without re-broadcasting the
-  # matched value into a world-readable log -- what makes this safe to run on a public repo.
-  # GITLEAKS_LICENSE is inherited from the glunk-works org secret (confirmed present,
-  # visibility ALL) -- no repo-level secret created, no BR-D21 exception to record.
-  # GITLEAKS_ENABLE_UPLOAD_ARTIFACT: false -- the action uploads a results.sarif artifact by
-  # default on every run, not only when leaks are found; BR-D4 names build artifacts
-  # explicitly alongside logs and PR comments, and the upload buys nothing a required check's
-  # own conclusion doesn't already say.
-  # No pull-requests: write: the action's PR-comment step just logs a warning without it and
-  # continues; the check's verdict comes from the scan itself, not the comment.
-  # F59, found by /critic-gate on this task: this job CANNOT pass on a fork PR. GITLEAKS_LICENSE
-  # is withheld from fork PRs like every other secret, and gitleaks-action enforces the licence
-  # unconditionally for an org-owned repo -- a hard failure, not a skip. Not fixable here; T7
-  # must decide whether to hold this out of the required-checks list or accept the cost.
+  # F59, closed 2026-08-09 -- NOT by holding this out of the required list, by removing the
+  # cause. The prior job used gitleaks/gitleaks-action, which enforces a GITLEAKS_LICENSE
+  # secret for any org-owned repo and hard-fails when one isn't present -- and GitHub withholds
+  # every secret from a fork PR, so that job could never pass one. The license requirement is
+  # gitleaks-action's own wrapper code (it calls out to api.keygen.sh), not a property of
+  # gitleaks itself: the scanner is MIT-licensed and ghcr.io/gitleaks/gitleaks -- the same
+  # binary, published by the same project -- carries no license gate for anyone, org-owned
+  # repo or not. Invoking that image directly instead of the Action wrapper needs no secret at
+  # all, so this job is now genuinely fork-PR-capable, not merely license-exempt.
+  # No --log-opts restricting the scan to the PR's commit range (what gitleaks-action did):
+  # full-history scan on every run instead. That range restriction is also what caused two
+  # coverage gaps found during T3's /critic-gate pass -- GitHub's commits API returns only the
+  # first page (30) so a >30-commit PR was under-scanned, and --no-merges --first-parent
+  # skipped anything introduced on a merged side branch. A full scan has neither gap, and at
+  # this repo's size the extra runtime is negligible; fetch-depth: 0 (already required) is what
+  # makes the full history available to scan.
+  # --redact keeps a real match's value out of the log, matching gitleaks-action's own
+  # hardcoded behavior (BR-D4). Docker is available natively on ubuntu-latest runners, so no
+  # setup step is needed beyond checkout.
+  # Scope, verified with `-l debug` before this job was required: no `--log-opts` means
+  # gitleaks runs `git log ... --all`, scanning every ref in the clone (fetch-depth: 0 fetches
+  # all branches, not just the PR's), not only main's history. Deliberate, not an oversight --
+  # /critic-gate flagged this as a real but recoverable risk (an old, unmerged branch could
+  # trip an entropy rule and turn this required check red repo-wide) and a probe over full
+  # history found no high-signal secret patterns. Restricting via `--log-opts` was considered
+  # and rejected: getting the merge-ref `--first-parent` semantics subtly wrong risks silently
+  # under-scanning the PR's own new commits, which is a worse failure than the current one --
+  # and unlike F59, a false positive here IS fixable from a PR (a `.gitleaksignore` fingerprint
+  # entry, same mechanism gitleaks-action itself offered).
+  # -v is verbose: BR-D4 residual, recorded rather than assumed safe -- --redact covers the
+  # matched secret value itself (verified against gitleaks' own source) but not the ~20 chars
+  # of surrounding line context verbose mode also prints. ci.yml holds no restricted value
+  # today (no ARN, no account id) so there is nothing for that context to leak; revisit if that
+  # changes.
+  # The digest below is pinned by content hash (immutable) but lives in a shell string, not a
+  # `uses:` line -- zizmor's unpinned-uses audit and Dependabot's github-actions ecosystem
+  # cannot see it, so it will not get an automated bump or vulnerability alert. Manually
+  # maintained; the trailing comment is the only record of what version it resolves to.
   secrets-scan:
     runs-on: ubuntu-latest
     steps:
@@ -146,12 +168,12 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
-      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
-          GITLEAKS_CONFIG: .gitleaks.toml
-          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: false
+      - name: Run gitleaks
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$GITHUB_WORKSPACE:/repo" -w /repo \
+            ghcr.io/gitleaks/gitleaks@sha256:c00b6bd0aeb3071cbcb79009cb16a60dd9e0a7c60e2be9ab65d25e6bc8abbb7f \
+            git --redact -v /repo # v8.30.1
 
   # Catches the injection and unpinned-uses/artipacked classes CLAUDE.md's GitHub Actions
   # security section names -- this is what turns "fixed once" (T1) into "can't regress."
@@ -164,11 +186,17 @@ jobs:
   # annotations read from the job log instead, work identically for same-repo and fork PRs, and
   # need no elevated permission at all -- so this job now inherits the workflow-level
   # `contents: read` default rather than declaring its own permissions: block.
-  # F60, found by the same pass: this job is red on EVERY PR today, not just forks -- its
-  # default `.` scan reaches deploy.yml's workflow-level `id-token: write`, which trips
-  # zizmor's own excessive-permissions audit (known since T1, never before recorded as a
-  # finding). Not this task's to fix; T7 must resolve or knowingly accept it before requiring
-  # this check.
+  # F60, CLOSED 2026-08-09 by S1b-T7: job-scoping deploy.yml's id-token: write (excessive-
+  # permissions) and adding dependabot.yml's cooldown block closed both findings this job was
+  # tripping on -- verified locally with this exact pinned image before this job was required
+  # (see sprint_plan.md Task 7 and docs/hardening_roadmap.md's F60 row).
+  # version: pinned rather than left at zizmor-action's own `latest` default -- found by
+  # /critic-gate on this task (both security-critic and architect, independently): once this
+  # job is a required check under bypass_actors: [], an unpinned tool version means a new
+  # zizmor release, not a repo change, can turn every open PR unmergeable. online-audits stays
+  # on (its default) and fetches live GHSA data, which is a real but accepted residual --
+  # disabling it would trade required-check stability for reduced detection, a call this task
+  # is not the one to make unilaterally.
   zizmor:
     runs-on: ubuntu-latest
     steps:
@@ -178,5 +206,6 @@ jobs:
       - name: Run zizmor
         uses: zizmorcore/zizmor-action@3dc1ecc9bcb9e94e9b2c709687979e1298497054 # v0.6.2
         with:
+          version: '1.29.0'
           advanced-security: false
           annotations: true

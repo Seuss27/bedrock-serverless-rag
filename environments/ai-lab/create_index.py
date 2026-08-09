@@ -79,6 +79,21 @@ index_body = {
 max_retries = 6
 retry_delay = 45  # Wait n seconds between attempts
 
+# AuthorizationException gets its OWN short, separately-bounded retry -- not the
+# max_retries/retry_delay loop above. Observed twice now (S1b-T7's DoD rebuild): a data-
+# access-policy this same apply had *just* created was rejected 1.6s after its own creation
+# completed, then succeeded on a plain retry once AOSS's data plane caught up -- propagation
+# lag, not a wrong principal (both aoss:APIAccessAll and the policy's Principal list were
+# confirmed correct against live AWS while diagnosing). A genuinely wrong principal still
+# can never resolve by waiting (F46's original finding, unchanged) -- so this stays short
+# and separate from the general loop rather than reusing its 6x45s budget, which would hide
+# a real config error for minutes exactly as F46 warned. Two retries, 15s apart: enough to
+# absorb propagation lag, an order of magnitude faster than the general loop to fail on a
+# genuine misconfiguration.
+auth_max_retries = 2
+auth_retry_delay = 15  # seconds
+auth_attempts = 0
+
 for attempt in range(max_retries):
     try:
         print(f"Attempt {attempt + 1}: Checking OpenSearch index...")
@@ -91,15 +106,32 @@ for attempt in range(max_retries):
         sys.exit(0)  # Tell OpenTofu the script was 100% successful
 
     except AuthorizationException:
-        # A 403 here means the caller's IAM/data-access-policy grant is wrong -- it can
-        # never resolve by waiting, so retrying it costs minutes and hides the real cause.
-        print(
-            f"Attempt {attempt + 1} failed: not authorized to manage the OpenSearch "
-            "Serverless index. This is a permissions problem, not eventual consistency "
-            "-- check the collection's data-access-policy principal and the caller's "
-            "aoss:APIAccessAll grant. Exiting without retrying."
-        )
-        sys.exit(1)
+        auth_attempts += 1
+        # Both budgets must have room: auth_attempts guards against masking a real
+        # misconfiguration for too long; `attempt < max_retries - 1` guards against the
+        # outer loop ending mid-sleep with no exit() call, which would let the script fall
+        # off the end and exit 0 -- a false success OpenTofu would trust.
+        if auth_attempts <= auth_max_retries and attempt < max_retries - 1:
+            print(
+                f"Attempt {attempt + 1} failed: not authorized to manage the OpenSearch "
+                "Serverless index yet. Retrying in case this is AOSS access-policy "
+                f"propagation lag on a policy created moments ago ({auth_max_retries - auth_attempts + 1} "
+                f"short retr{'y' if auth_max_retries - auth_attempts + 1 == 1 else 'ies'} left, "
+                f"{auth_retry_delay}s apart)."
+            )
+            time.sleep(auth_retry_delay)
+        else:
+            # Survived auth_max_retries short retries (or ran out of outer attempts) and
+            # is still a 403: the caller's IAM/data-access-policy grant is genuinely wrong,
+            # not propagation lag. This cannot resolve by waiting longer.
+            print(
+                f"Attempt {attempt + 1} failed: not authorized to manage the OpenSearch "
+                f"Serverless index, and it did not resolve after {auth_attempts} short "
+                "retries. This is a permissions problem, not propagation lag -- check the "
+                "collection's data-access-policy principal and the caller's "
+                "aoss:APIAccessAll grant. Exiting without further retries."
+            )
+            sys.exit(1)
 
     except TransportError as e:
         # Do not print str(e): opensearchpy errors can embed the collection endpoint

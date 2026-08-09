@@ -1,9 +1,14 @@
 name: Deploy AI Lab Infrastructure
 
+# S1b-T2: split out of deploy-ai-lab.yml (deleted). This file is the credentialed half --
+# every job below assumes an AWS role. No `pull_request` trigger exists here, deliberately
+# (post-S1a reassessment, sprint_plan.md top banner): T4 (a PR-triggered plan job) is
+# deferred to S2, which mints a read-only plan role first. Until then, the moment this file
+# existed with a pull_request trigger it would hand an apply-capable credential to code from
+# an unreviewed branch -- exactly what deleting deploy-ai-lab.yml's security-and-linting job
+# (which did exactly that) was for. `push` + `workflow_dispatch` only, full stop.
 on:
   push:
-    branches: [main]
-  pull_request:
     branches: [main]
   # Human-triggered only -- deliberately NOT pull_request/pull_request_target/workflow_run
   # (CLAUDE.md's GitHub Actions security rules). A typed confirmation phrase is required
@@ -36,99 +41,18 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  security-and-linting:
-    # This job (and tofu-plan-main/tofu-apply, which need it) exists to plan/apply on
-    # push/PR -- a manual dispatch is exclusively for the destroy job below. Skipping this
-    # job on workflow_dispatch skips the plan/apply chain too (a skipped `needs` job is not
-    # `success`), so a manual dispatch runs ONLY the job its confirm input actually gates.
-    if: github.event_name != 'workflow_dispatch'
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: environments/ai-lab
-    steps:
-      - uses: actions/checkout@v7
-
-      # F-4 defense-in-depth: GitHub's log masking is exact-literal substring matching, so
-      # masking the full role ARN does not also mask the bare account id if it appears in
-      # a DIFFERENTLY-shaped string later -- e.g. an assumed-role ARN
-      # (arn:aws:sts::<acct>:assumed-role/<role>/<session>) in an AWS error message is a
-      # different string than the plain IAM role ARN, even though both share the account
-      # id substring. Deriving and masking the bare id separately closes that gap for
-      # every ARN shape at once. Safe via `env:` here (unlike the vars.* case elsewhere in
-      # this file) because secrets.* IS masked in this step's own preamble too -- proven
-      # in the same measured run the BR-D4 exception notes below are about.
-      - name: Register bare account id for log masking
-        env:
-          DEPLOY_ARN: ${{ secrets.AWS_OIDC_ROLE_ARN }}
-        run: |
-          set -euo pipefail
-          account_id="$(echo "$DEPLOY_ARN" | cut -d: -f5)"
-          # Fail loudly rather than silently skip: an empty/malformed account id means
-          # this defense-in-depth control did NOT register, and a green step here must
-          # not be readable as "masking is active" when it isn't (F48's own lesson --
-          # a control whose only evidence is a step that also passes when it did nothing
-          # is indistinguishable from a miss).
-          if [[ ! "$account_id" =~ ^[0-9]{12}$ ]]; then
-            echo "::error::AWS_OIDC_ROLE_ARN did not yield a 12-digit account id -- account-id masking is NOT active"
-            exit 1
-          fi
-          echo "::add-mask::$account_id"
-
-      - uses: opentofu/setup-opentofu@v2
-
-      # Runs before AWS credentials exist in this job's environment: neither pip nor
-      # ruff/bandit need them, and a `pull_request`-triggered job's `pip install` is
-      # untrusted-dependency-execution surface -- don't hand it a live credential for
-      # free. See CLAUDE.md's GitHub Actions security section.
-      - name: Python Security & Linting
-        uses: actions/setup-python@v7
-        with: {python-version: '3.11'}
-      - run: |
-          pip install ruff==0.16.2 bandit==1.9.4
-          ruff check .
-          bandit -r .
-
-      # CONFIGURE CREDENTIALS FIRST (of the AWS-dependent steps below)
-      # This provides the necessary OIDC tokens for the S3 backend to initialize
-      #
-      # BR-D4 EXCEPTION, recorded: this role ARN rides `secrets.*`, not `vars.*`, even
-      # though it is restricted-not-secret by BR-D4's own definition. Measured live
-      # 2026-08-07 (run 31226198865, deleted after capture): GitHub Actions dumps every
-      # `with:`/`env:` value from `vars.*` into the auto-generated step preamble it prints
-      # for EVERY step -- `uses:` steps included -- with no way to suppress or mask it
-      # after the fact. Only `secrets.*` is auto-masked, everywhere, unconditionally. On
-      # GitHub specifically, "restricted, use a variable" and "never in a workflow log"
-      # are in direct conflict; this is the one place BR-D4's stated split does not hold,
-      # and secrets.* is the only mechanism that delivers what BR-D4 actually wants here.
-      - uses: aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
-          aws-region: us-east-1
-
-      - name: OpenTofu Init
-        run: tofu init
-
-      - name: OpenTofu Checks
-        run: |
-          tofu fmt -check -recursive ../../
-          tofu validate
-
-      - name: Checkov IaC Scan
-        uses: bridgecrewio/checkov-action@v12
-        with:
-          directory: ../../modules
-          framework: terraform
-          quiet: true
-
   # F13/F14/S1a-T5: read-only plan on push to main, split out of the old fused
   # plan-and-apply job. An Environment approval fires when a job STARTS, so a fused job
   # would ask tofu-apply's approver to sign off before any plan had run -- this job exists
-  # so the approver has fresh evidence to read. Shaped identically to S1b-T4's PR-triggered
-  # plan job (same summarizer, same -lock=false, no artifact) so the two stay diffable when
-  # T4 lands; it differs only in trigger (push to main, not pull_request).
+  # so the approver has fresh evidence to read. No `needs:` on ci.yml's checks -- that file
+  # is a separate `pull_request`-triggered workflow now, and GitHub Actions `needs:` cannot
+  # span workflow files.
+  # ⚠️ ci.yml's checks are NOT required checks yet -- only `pr-title` is, until T7 adds
+  # them. Until then this repo's ruleset permits merging with every ci.yml job red
+  # (required_approving_review_count: 0, bypass_actors: []), so the human approval on
+  # tofu-apply below is, for this interval, the ONLY automated control standing in front
+  # of an apply -- not a second layer behind ci.yml. Read the plan summary accordingly.
   tofu-plan-main:
-    needs: security-and-linting
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     defaults:
@@ -136,7 +60,7 @@ jobs:
         working-directory: environments/ai-lab
     env:
         # BR-D4 EXCEPTION, recorded in CLAUDE.md's BR-D4 section (see the identical note
-        # on the credentials step in security-and-linting above): all three of these ride
+        # on the credentials step in tofu-apply below): all three of these ride
         # `secrets.*`, not `vars.*`, even though none is secret by BR-D4's own definition
         # (bucket name, two role ARNs -- restricted, not PII).
         TF_VAR_data_source_bucket_name: ${{ secrets.DATA_SOURCE_BUCKET_NAME }}
@@ -147,7 +71,7 @@ jobs:
         with:
           persist-credentials: false
 
-      # F-4 defense-in-depth -- see the identical step in security-and-linting above.
+      # F-4 defense-in-depth -- see the identical step in tofu-apply below.
       # Derived from the SAME expression passed to role-to-assume below (not hardcoded to
       # the apply role): the day S2-T2 creates AWS_PLAN_ROLE_ARN, a mask pinned to the
       # wrong role would silently mask the wrong account with no failing check.
@@ -216,6 +140,16 @@ jobs:
   # between the two is an accepted residual (sprint_plan.md's Critical Review): passing a
   # single plan file across the job boundary would need a public artifact, which BR-D4
   # forbids more directly than the residual costs.
+  #
+  # DECISION RECORDED (S1b-T2, 2026-08-08), answering the "decide, don't drift" item
+  # .ai/next-steps.md raised: while the lab sits deliberately torn down, EVERY merge --
+  # docs-only ones included -- plans "12 to add" and needs a manual REJECT rather than a
+  # rubber-stamp approve, which is new approval fatigue the S1a design didn't anticipate.
+  # Kept as-is (option "accept the noise"): no zero-changes short-circuit, no
+  # workflow_dispatch-only gating while torn down. A skip-on-no-changes would reduce how
+  # often this gate is exercised -- the exact regression the sprint plan's own banner
+  # warns against -- and BR-D2 is unaffected either way (a human still reads a plan before
+  # anything reaches AWS). Revisit if approval fatigue becomes a real habit-forming risk.
   tofu-apply:
     needs: tofu-plan-main
     if: github.event_name == 'push' && github.ref == 'refs/heads/main'
@@ -239,13 +173,24 @@ jobs:
         with:
           persist-credentials: false
 
-      # F-4 defense-in-depth -- identical to the same step in the other jobs.
+      # F-4 defense-in-depth: GitHub's log masking is exact-literal substring matching, so
+      # masking the full role ARN does not also mask the bare account id if it appears in
+      # a DIFFERENTLY-shaped string later -- e.g. an assumed-role ARN
+      # (arn:aws:sts::<acct>:assumed-role/<role>/<session>) in an AWS error message is a
+      # different string than the plain IAM role ARN, even though both share the account
+      # id substring. Deriving and masking the bare id separately closes that gap for
+      # every ARN shape at once.
       - name: Register bare account id for log masking
         env:
           DEPLOY_ARN: ${{ secrets.AWS_OIDC_ROLE_ARN }}
         run: |
           set -euo pipefail
           account_id="$(echo "$DEPLOY_ARN" | cut -d: -f5)"
+          # Fail loudly rather than silently skip: an empty/malformed account id means
+          # this defense-in-depth control did NOT register, and a green step here must
+          # not be readable as "masking is active" when it isn't (F48's own lesson --
+          # a control whose only evidence is a step that also passes when it did nothing
+          # is indistinguishable from a miss).
           if [[ ! "$account_id" =~ ^[0-9]{12}$ ]]; then
             echo "::error::AWS_OIDC_ROLE_ARN did not yield a 12-digit account id -- account-id masking is NOT active"
             exit 1
@@ -265,8 +210,15 @@ jobs:
 
       - uses: opentofu/setup-opentofu@v2
 
-      # BR-D4 EXCEPTION -- secrets.*, not vars.*; see the note on security-and-linting's
-      # credentials step above.
+      # BR-D4 EXCEPTION, recorded: this role ARN rides `secrets.*`, not `vars.*`, even
+      # though it is restricted-not-secret by BR-D4's own definition. Measured live
+      # 2026-08-07 (run 31226198865, deleted after capture): GitHub Actions dumps every
+      # `with:`/`env:` value from `vars.*` into the auto-generated step preamble it prints
+      # for EVERY step -- `uses:` steps included -- with no way to suppress or mask it
+      # after the fact. Only `secrets.*` is auto-masked, everywhere, unconditionally. On
+      # GitHub specifically, "restricted, use a variable" and "never in a workflow log"
+      # are in direct conflict; this is the one place BR-D4's stated split does not hold,
+      # and secrets.* is the only mechanism that delivers what BR-D4 actually wants here.
       - uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_OIDC_ROLE_ARN }}
@@ -298,8 +250,9 @@ jobs:
       # the residual gap between this plan and the one the approver actually read).
       # -lock-timeout=5m again: the plan step above released the lock before this step
       # re-takes it, so the same brief-wait reasoning applies here, one step later.
-      # -auto-approve is permitted here, and only here, because the Environment approval
-      # already happened (BR-D2).
+      # -auto-approve is permitted here because the Environment approval already happened
+      # (BR-D2). CLAUDE.md: permitted in exactly two places in this repo and nowhere else --
+      # here, and on destroy-ai-lab below (gated instead by its typed confirm phrase).
       - name: OpenTofu Apply
         run: tofu apply -input=false -lock-timeout=5m -auto-approve tfplan
 
@@ -308,17 +261,18 @@ jobs:
         if: always()
         run: rm -f tfplan plan.json
 
-  # MW-T6: the "destroy" half of the destroy -> apply -> RetrieveAndGenerate cycle. No such
-  # mechanism existed before this job -- deploy-ai-lab.yml had only push/pull_request. Runs
+  # MW-T6: the "destroy" half of the destroy -> apply -> RetrieveAndGenerate cycle. Runs
   # ONLY on a manual dispatch from `main` with the exact confirm phrase (see the on:
   # workflow_dispatch block above); any other event, ref, or phrase leaves this job skipped.
-  # This is the first-ever real destroy under the CI role -- per the MW sprint plan's
-  # Critical review, a human watches the run live rather than firing it unattended.
-  # Deliberately NOT behind `environment: production` -- S1a planning decision 2: GitHub
-  # permits self-approval on Environments, so on a one-maintainer repo it would buy zero
-  # independent review while changing this job's OIDC subject. The typed confirm phrase
-  # plus a human watching the run live is the accepted control; revisit on a second
-  # maintainer (BR-D25).
+  # A human watches the run live rather than firing it unattended, per the MW sprint plan's
+  # Critical review. Carried across BYTE-IDENTICAL from deploy-ai-lab.yml (S1b-T2 planning
+  # decision 2) -- including keeping the `name:` key. Deliberately NOT behind
+  # `environment: production`: GitHub permits self-approval on Environments, so on a
+  # one-maintainer repo it would buy zero independent review while changing this job's OIDC
+  # subject. The typed confirm phrase plus a human watching the run live is the accepted
+  # control; revisit on a second maintainer (BR-D25). `workflow_dispatch`-only, so it can
+  # never become a required check -- F18's name:-override rule does not bind it, and the
+  # human-readable name is worth having in the dispatch UI.
   destroy-ai-lab:
     name: Destroy AI Lab Infrastructure (manual)
     if: >-
@@ -330,7 +284,7 @@ jobs:
       run:
         working-directory: environments/ai-lab
     env:
-      # Same BR-D4 secrets.* exception as the jobs above -- see their env: block comments
+      # Same BR-D4 secrets.* exception as tofu-apply above -- see its env: block comment
       # for the measured reason.
       TF_VAR_data_source_bucket_name: ${{ secrets.DATA_SOURCE_BUCKET_NAME }}
       TF_VAR_budget_notification_email: ${{ secrets.BUDGET_NOTIFICATION_EMAIL }}

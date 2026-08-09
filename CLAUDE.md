@@ -142,13 +142,26 @@ if no gate existed on a repo that has one.
 - **⚠️ A `pull_request`-triggered job runs the workflow file *from the PR branch*.** This is
   the rule the rest of this section depends on, and it is why **F3** ("one role for plan and
   apply") is not a least-privilege smell but **arbitrary command execution with
-  account-admin-capable credentials**. `deploy-ai-lab.yml` runs on `pull_request` and assumes
-  the deploy role ARN (`secrets.AWS_OIDC_ROLE_ARN` since `MW`-T6's BR-D21 storage-mechanism
-  correction below — the trust policy this paragraph is about is unaffected), whose live trust is `StringLike` over
-  `repo:<owner>@<org_id>/<repo>@<repo_id>:*` — which **still admits `:pull_request`**. So
-  **anyone who can push a branch can edit the `run:` block and get `iam:CreateRole` on `*`** in
-  the account holding bounty-infra's findings archive. Any change that gives a `pull_request`
-  job a credential is a change to who can execute code as that credential.
+  account-admin-capable credentials**, for as long as a credentialed job sits on `pull_request`.
+  ~~`deploy-ai-lab.yml` runs on `pull_request` and assumes the deploy role ARN … So anyone who
+  can push a branch can edit the `run:` block and get `iam:CreateRole` on `*`** in the account
+  holding bounty-infra's findings archive.~~ **The EXPLOITABLE INSTANCE closed 2026-08-08 by
+  `S1b`-T2 — `F3` itself did NOT.** `deploy-ai-lab.yml` no longer exists — it split into
+  `ci.yml` (uncredentialed: no `id-token`, no AWS credential — it does read
+  `secrets.GITHUB_TOKEN` for one step, GitHub's own auto-issued read-only token, not an
+  exception to this rule — safe on a fork PR) and `deploy.yml`
+  (credentialed, triggers are `push: branches: [main]` + `workflow_dispatch` only, **no
+  `pull_request` trigger at all**). This repo now has **zero credentialed `pull_request`
+  jobs**, for the first time in its history. **But nothing at the IAM layer moved**: the trust
+  policy's trailing `:*` still admits `:pull_request` (**F2**, still open, `S2`-T2), and no
+  separate plan-only role exists yet (**F56**, still `S2`-T0) — so `docs/hardening_roadmap.md`
+  still carries **F3 open, `Sprint: S2-T2`**, and this bullet must keep agreeing with that, not
+  declare it closed on its own authority. **The rule above is what any future change must keep
+  respecting:** `S2`'s deferred PR-plan job (originally `S1`-T4, folded into `S2`'s own Task 2
+  per that sprint's arrival banner) is the next thing that puts a job back on `pull_request`,
+  and it must use the read-only plan role `S2`-T0 mints, never `secrets.AWS_OIDC_ROLE_ARN`, or
+  **F3** — not F13, which S1a-T5 already closed and cannot "return" — reopens at the code layer
+  in the sprint meant to retire it.
   > **Two corrections, 2026-08-07, and the second one is the trap.** *(a)* The subject was
   > `repo:<owner>/<repo>:*` until ST-T3 narrowed it; it is now a **single** subject rather than
   > a glob over owners — **and the conclusion above is completely unchanged**, because the
@@ -264,8 +277,9 @@ precious" is true of this lab and false of the account it runs in.
   job-level `env:` dump in its own preamble. Only `secrets.*` is masked, unconditionally,
   from the first log line onward. So on GitHub specifically, "restricted, use a variable"
   and "never in a workflow log" are in direct conflict, and `secrets.*` is the only
-  mechanism that delivers what this rule actually wants. `deploy-ai-lab.yml`'s deploy role
-  ARN, the source bucket name, and the AOSS data-plane SSO principal ARN now ride
+  mechanism that delivers what this rule actually wants. `deploy.yml`'s (formerly
+  `deploy-ai-lab.yml`'s, renamed by `S1b`-T2) deploy role ARN, the source bucket name, and
+  the AOSS data-plane SSO principal ARN now ride
   `secrets.*` for exactly this reason — restricted-not-secret by this rule's own
   definition, but a workflow-log exception to it, recorded in-file at each use. **The rule
   is unchanged everywhere else** — `.env`, `tofu` CLI invocations outside CI, and anywhere
@@ -283,8 +297,8 @@ precious" is true of this lab and false of the account it runs in.
   credential F52 says to revoke, the other is a stale sentence.)* Do not revive either.
 - ~~This repo holds **no secrets** today — that is why the pattern is being set now, before the
   first one exists.~~ **Corrected 2026-08-07: this repo holds exactly ONE secret** —
-  `BUDGET_NOTIFICATION_EMAIL`, created by S0-T8 on 2026-08-06 and read by `deploy-ai-lab.yml`
-  as a `TF_VAR_`. It is an email address, i.e. **PII**, which is what makes it a secret rather
+  `BUDGET_NOTIFICATION_EMAIL`, created by S0-T8 on 2026-08-06 and read by `deploy.yml`
+  (renamed from `deploy-ai-lab.yml` by `S1b`-T2) as a `TF_VAR_`. It is an email address, i.e. **PII**, which is what makes it a secret rather
   than a BR-D4 *restricted* variable. **It is a GitHub Actions secret, not an SSM parameter,
   and that is a recorded exception rather than a violation** — a value a workflow needs at job
   start has no SSM path it can read at that moment. The three-tier rule above is unchanged;
@@ -294,8 +308,8 @@ precious" is true of this lab and false of the account it runs in.
 
 This repo is **public**. Genuine secrets never land in git; local values live in `.env`
 (gitignored) and CI values in GitHub Actions **variables** — ~~not the tree~~ **or, inside
-`deploy-ai-lab.yml` specifically, `secrets.*`; see the BR-D21 tier-2 correction above** —
-either way, not the tree. Account
+`deploy.yml` specifically (renamed from `deploy-ai-lab.yml` by `S1b`-T2), `secrets.*`; see
+the BR-D21 tier-2 correction above** — either way, not the tree. Account
 identifiers, role ARNs, the state bucket name, and the AOSS collection endpoint are
 **restricted** — they are not credentials, but on a public repo they are free
 reconnaissance, so they must not reach a PR comment, a workflow log, or a build artifact

@@ -7,6 +7,11 @@ updates:
     groups:
       actions:
         patterns: ["*"]
+    # F60: zizmor's dependabot-cooldown audit wants at least a 7-day cooldown before an
+    # update is proposed -- long enough that an opportunistic package compromise has likely
+    # been caught and pulled before Dependabot would offer to pull it in here.
+    cooldown:
+      default-days: 7
     # Without this, Dependabot's default title ("Bump the actions group with N updates")
     # fails pr-title.yml's Conventional Commits grammar -- capital letter, no type prefix
     # -- and the bot-name length exemption in that workflow only waives the length check,

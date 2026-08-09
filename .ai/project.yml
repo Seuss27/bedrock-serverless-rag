@@ -8,10 +8,12 @@
 # option — a repo-local `.claude/skills/<name>/` shadows the plugin's copy entirely and
 # silently stops receiving upstream fixes.
 #
-# EVERY VALUE BELOW DESCRIBES THIS REPO AS IT IS ON 2026-08-07, not as the hardening roadmap
-# intends it to become. A sprint that changes one of these facts updates this file in the SAME
-# pull request; a stale value here makes every skill that reads it report a confident answer
-# about a repo that no longer exists.
+# EVERY VALUE BELOW DESCRIBES THIS REPO AS IT IS ON 2026-08-09 (last touched by S1b-T7's
+# ruleset.required_checks update), not as the hardening roadmap intends it to become. A sprint
+# that changes one of these facts updates this file in the SAME pull request; a stale value
+# here makes every skill that reads it report a confident answer about a repo that no longer
+# exists. This date has gone stale silently before (two days, on `ruleset.name`'s own null
+# claim) — bump it deliberately in the same PR that changes a value, not on a schedule.
 #
 # EXACTLY ONE key is `null` on purpose: `review.ci_gate` (BR-D14 — no `architect-review` check).
 # ⚠️ `ruleset.name` is NOT null and has not been since 2026-08-05. This header claimed it was
@@ -129,10 +131,14 @@ gates:
 # deadlocks a solo-owner repo. `bypass_actors: []` is deliberate -- a bypassable ruleset is
 # a suggestion, not a control; the undo is `gh api -X DELETE .../rulesets/<id>` -- resolve
 # `<id>` live with `gh api repos/<repo>/rulesets --jq '.[].id'`, never from this comment.
+# S1b-T7 (2026-08-09) appended five checks: tofu-fmt, tofu-validate, tflint, secrets-scan,
+# zizmor. checkov and tofu-plan are deliberately absent -- see sprint_plan.md Task 7. The list
+# below is a SET, not an ordered sequence: GitHub returns ruleset contexts in its own order,
+# not the order they were PUT in (Task 7's own acceptance criterion).
 ruleset:
   name: protected-integration-branches
   rule_types: [deletion, non_fast_forward, pull_request, required_status_checks]
-  required_checks: [pr-title]
+  required_checks: [pr-title, tofu-fmt, tofu-validate, tflint, secrets-scan, zizmor]
 
 # ── the fresh-session review gate ────────────────────────────────────────────
 # `null` is a decision, not a gap: this repo has no `architect-review` CI check. Its critic

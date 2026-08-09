@@ -328,11 +328,17 @@ one-call destructive path if ever granted account-wide.
     "delete the index if it exists" path, which stays in S3+S4 — it costs nothing today
     (BR-D20: there is no index at all right now) and it is a forward-looking rule under BR-D10.
   - **Target Files:** `environments/ai-lab/create_index.py`
-  - **Acceptance Criteria:** An authorization failure exits in **under a minute** with a message
-    that names the authorization cause. The retry path still covers genuine eventual
-    consistency. **The exception text does not reach the log** — bare `print(e)` renders the
-    collection endpoint and caller identity into a public workflow log (**F31**, BR-D4); fix it
-    here since the file is open, and mark it closed early in S5's list.
+  - **Acceptance Criteria:** ~~An authorization failure exits in **under a minute** with a
+    message that names the authorization cause.~~ **Superseded 2026-08-09 by `S1b`'s DoD
+    verify cycle — see `F46`'s roadmap row, the current text, not this one.** Three real
+    occurrences of AOSS access-policy propagation lag proved "under a minute" was the wrong
+    number to chase; `create_index.py` now retries `AuthorizationException` (and other
+    `TransportError`-family exceptions seen in that window) on an increasing-delay budget
+    capped at 5:15, sized to AWS's own documented worst case rather than an arbitrary short
+    bound. The retry path still covers genuine eventual consistency. **The exception text does
+    not reach the log** — bare `print(e)` renders the collection endpoint and caller identity
+    into a public workflow log (**F31**, BR-D4); fix it here since the file is open, and mark
+    it closed early in S5's list.
   - > **Why it moved to third.** Every iteration of Task 5's identity loop that touches the data
     > plane costs 12 minutes without this, and — worse — a `403` meaning *"your policy is wrong"*
     > is indistinguishable from one meaning *"wait"*. The sprint whose entire purpose is

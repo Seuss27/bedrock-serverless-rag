@@ -257,8 +257,15 @@ of 2026-08-08 — `MW`-T6 closed F51 with a full CI-driven cycle, and a later `d
 dispatch tore all 12 resources down in one clean pass (run `31274829358`).** The test is not
 retired by passing once: `S1b`-T2 **deletes the workflow file that proof was measured against**,
 which is why re-running the cycle against the split `ci.yml`/`deploy.yml` is `S1b`'s own
-Definition of Done. **As of this writing the lab is deliberately torn down** — nothing is
-deployed, and a merge to `main` will offer to rebuild it (see `.ai/next-steps.md`).
+Definition of Done. ~~**As of this writing the lab is deliberately torn down** — nothing is
+deployed, and a merge to `main` will offer to rebuild it.~~ **Stale as of 2026-08-09: a
+docs-only merge (PR #92) itself re-triggered a rebuild `tofu-apply` — every push to `main`
+does, path or no path — and that apply ran for real and got 11 of 12 resources up before
+failing on the vector index. No `destroy-ai-lab` has run since, so 11 resources are live
+right now, not zero.** This is exactly why "torn down" is a `.ai/next-steps.md` fact, not a
+`CLAUDE.md` one — check that file (or AWS directly) for the live answer rather than trusting
+a snapshot here, which is the whole point of keeping this file "local truth" and the cursor
+external.
 
 **The hard edge, and the one that matters:** what is ephemeral is the *workload*, not the
 *blast radius*. The AWS account is shared with the whole organization — it holds

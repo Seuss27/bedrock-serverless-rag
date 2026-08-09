@@ -100,3 +100,83 @@ jobs:
           pip install ruff==0.16.2 bandit==1.9.4
           ruff check .
           bandit -r .
+
+  # F19: Checkov previously scanned modules/ only, so bootstrap/ -- which holds F1 and F2,
+  # the two worst findings in the repo -- had never been scanned. directory: . covers
+  # bootstrap/ + modules/ + environments/ in one pass. Reports, does not gate: this job is
+  # NOT in T7's required-checks list. checkov will almost certainly fail on S3's own findings
+  # (F6/F7, AOSS public network policy / missing public-access block) -- that is expected and
+  # accepted (see sprint_plan.md's reassessment banner); S3 adds this to required_checks in
+  # the same change that closes what it fires on. output_format: cli so the job log itself
+  # (not just a SARIF artifact) shows which files under each of the three directories were
+  # scanned, per this task's acceptance criterion.
+  checkov:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: bridgecrewio/checkov-action@9b70310bcd306d11740313070b940167d6b23085 # v12.3115.0
+        with:
+          directory: .
+          framework: terraform
+          soft_fail: false
+          output_format: cli
+
+  # Full history: gitleaks scans the base^..head commit range, which needs commits this PR's
+  # default shallow clone would not have. gitleaks-action hardcodes --redact on every
+  # invocation, so a real hardcoded secret fails this check without re-broadcasting the
+  # matched value into a world-readable log -- what makes this safe to run on a public repo.
+  # GITLEAKS_LICENSE is inherited from the glunk-works org secret (confirmed present,
+  # visibility ALL) -- no repo-level secret created, no BR-D21 exception to record.
+  # GITLEAKS_ENABLE_UPLOAD_ARTIFACT: false -- the action uploads a results.sarif artifact by
+  # default on every run, not only when leaks are found; BR-D4 names build artifacts
+  # explicitly alongside logs and PR comments, and the upload buys nothing a required check's
+  # own conclusion doesn't already say.
+  # No pull-requests: write: the action's PR-comment step just logs a warning without it and
+  # continues; the check's verdict comes from the scan itself, not the comment.
+  # F59, found by /critic-gate on this task: this job CANNOT pass on a fork PR. GITLEAKS_LICENSE
+  # is withheld from fork PRs like every other secret, and gitleaks-action enforces the licence
+  # unconditionally for an org-owned repo -- a hard failure, not a skip. Not fixable here; T7
+  # must decide whether to hold this out of the required-checks list or accept the cost.
+  secrets-scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: gitleaks/gitleaks-action@e0c47f4f8be36e29cdc102c57e68cb5cbf0e8d1e # v3.0.0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+          GITLEAKS_CONFIG: .gitleaks.toml
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: false
+
+  # Catches the injection and unpinned-uses/artipacked classes CLAUDE.md's GitHub Actions
+  # security section names -- this is what turns "fixed once" (T1) into "can't regress."
+  # zizmor-action propagates zizmor's own exit code: it fails on ANY finding at any severity
+  # (no min-severity/min-confidence input is set), the same way a failing test fails `test`.
+  # advanced-security: false / annotations: true -- deliberately NOT the SARIF-to-Security-tab
+  # upload the action defaults to. That upload needs security-events: write, which a fork PR's
+  # GITHUB_TOKEN is capped read-only regardless of what this file grants, so the default
+  # config fails closed on every fork PR (found by /critic-gate on this task). Inline
+  # annotations read from the job log instead, work identically for same-repo and fork PRs, and
+  # need no elevated permission at all -- so this job now inherits the workflow-level
+  # `contents: read` default rather than declaring its own permissions: block.
+  # F60, found by the same pass: this job is red on EVERY PR today, not just forks -- its
+  # default `.` scan reaches deploy.yml's workflow-level `id-token: write`, which trips
+  # zizmor's own excessive-permissions audit (known since T1, never before recorded as a
+  # finding). Not this task's to fix; T7 must resolve or knowingly accept it before requiring
+  # this check.
+  zizmor:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Run zizmor
+        uses: zizmorcore/zizmor-action@3dc1ecc9bcb9e94e9b2c709687979e1298497054 # v0.6.2
+        with:
+          advanced-security: false
+          annotations: true

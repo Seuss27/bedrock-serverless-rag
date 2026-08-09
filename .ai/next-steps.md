@@ -6,63 +6,69 @@ Regenerate this at the end of every working session.
 
 ## Now
 
-**`implementing` — `S1b` (the pipeline rewrite).** `T2`, `T1` done. Three tasks left:
-`T3 → T6 → T7`.
+**`implementing` — `S1b` (the pipeline rewrite).** `T2`, `T1` done. `T3` shipped as an open
+PR, awaiting merge. Two tasks left after it: `T6 → T7`.
 
 ## Just done
 
-**`S1b`-T1 shipped as PR #78 (`928a088`).** Every `uses:` in `ci.yml`/`deploy.yml` pinned
-from a mutable tag to a commit SHA (`owner/repo@<40-char-sha> # <tag>`).
+**`S1b`-T3 shipped as PR #80** (branch `ci/s1b-t3-scanner-jobs`), open and mergeable, not yet
+merged.
 
-- Four pins reused as-is from `glunk-works/bounty-infra` (`actions/checkout`,
-  `actions/setup-python`, `opentofu/setup-opentofu`, `terraform-linters/setup-tflint`);
-  `aws-actions/configure-aws-credentials` resolved fresh via `gh api` (dereferenced the
-  annotated `v6` tag to its commit).
-- Added `persist-credentials: false` to `destroy-ai-lab`'s checkout — the one T2 left
-  unpinned since that job had to carry byte-identical, and the most destructive job in the
-  repo (it was writing `GITHUB_TOKEN` to `.git/config` while holding the admin-capable OIDC
-  credential during a destroy apply).
-- `/critic-gate` ran `security-critic` (chosen over `architect`/both — diff was narrow and
-  mechanical). It independently re-resolved all five SHAs against upstream (no drift),
-  confirmed 7/7 checkouts carry `persist-credentials: false`, and confirmed no collateral
-  change to `destroy-ai-lab`'s `if:`. One finding, fixed: the `configure-aws-credentials`
-  comment named the mutable `v6` tag instead of the immutable release it resolves to —
-  corrected to `# v6.2.3` to match the other four pins' precision.
-- Local green gate and `zizmor` both clean (no `unpinned-uses`, no `artipacked`; one
-  pre-existing, unrelated `excessive-permissions` finding on `deploy.yml`'s workflow-level
-  `id-token: write`, out of scope for `T1`).
+- Added `checkov` (`directory: .` — closes **F19**'s coverage gap, now scans `bootstrap/` +
+  `modules/` + `environments/` instead of `modules/` only), `secrets-scan` (gitleaks, new
+  `.gitleaks.toml`), and `zizmor` to `ci.yml`, all SHA-pinned per `T1`'s convention.
+- `/critic-gate` ran **both** `security-critic` and `architect` on the diff before commit.
+  Both independently found the same fork-PR deadlock: `secrets-scan` and `zizmor` would both
+  be red on a fork PR once `T7` makes them required. Recorded as **F59** and **F60**
+  (roadmap totals **58 → 60**) and routed to `S1b`-T7 rather than fixed here.
+- One fork-PR gap **was** fixed rather than merely recorded: `zizmor`'s default SARIF upload
+  also failed on forks (needs `security-events: write`, which a fork token never gets) —
+  closed with `advanced-security: false` / `annotations: true` instead (GitHub-native inline
+  annotations, same on forks and same-repo PRs, no elevated permission needed).
+- Also fixed: a wrong in-file comment (zizmor fails on **any** finding, not just
+  High-confidence), and a `CLAUDE.md` parenthetical this same diff made stale (claimed
+  `ci.yml` reads `GITHUB_TOKEN` for one step and nothing else — now two steps, plus the new
+  `GITLEAKS_LICENSE` secret).
+- **Live CI on PR #80 confirmed every prediction.** `secrets-scan` and every pre-existing
+  check pass. `checkov` fails exactly on **S3**'s already-tracked findings (13 failures, all
+  mapping to F7/F8/F9 — nothing new). `zizmor` fails exactly on **F60**'s two findings
+  (`deploy.yml:27` excessive-permissions, plus a previously-unknown `dependabot-cooldown` on
+  `.github/dependabot.yml:3`, folded into F60), and its SARIF-upload step correctly shows
+  `outcome=skipped`, confirming the `advanced-security: false` fix works. Only `pr-title`
+  (the sole currently-required check) needs to pass for mergeability, and it does.
 
 ## Next
 
-**`S1b`-T3 — full-coverage IaC and workflow scanning.**
+**Merge PR #80.** Then **`S1b`-T6 — purge every raw-output path.**
 
-- Add three scanner jobs to `ci.yml`: `checkov` (`directory: .`, `framework: terraform`,
-  `soft_fail: false`, covering `bootstrap/` + `modules/` + `environments/` — the coverage
-  gap is the finding, F19), `secrets-scan` (`gitleaks/gitleaks-action`, `fetch-depth: 0`, a
-  committed `.gitleaks.toml`, `secrets.GITLEAKS_LICENSE` — already inherited org-wide from
-  `glunk-works`, no new secret needed), `zizmor` (`zizmorcore/zizmor-action`, job-scoped
-  `permissions: {contents: read, security-events: write}`, not hoisted to workflow level).
-- Pin all three new actions' `uses:` lines to a commit SHA, same `T1` pattern.
-- Do **not** add `iac-diff-guard` (cut by BR-D23, already covered by the PR template's
-  `Blast radius` section). Do **not** make `checkov` required (`S3`'s job).
+- Sweep `ci.yml` and `deploy.yml` for BR-D4 violations: no `set -x`, no `env` dump, no
+  `aws sts get-caller-identity` echo, no `tofu output` without `-json | jq`, no `tofu show`
+  of state.
+- Add `set -euo pipefail` to the top of every multi-line `run:` block.
+- Confirm no `${{ }}` appears inside any `run:` block **or** any `actions/github-script`
+  `script:` block anywhere in the repo — the basic grep alone passes an exploitable payload
+  sitting under `with:` → `script:`; Task 6's acceptance criteria has the second explicit
+  check.
 
 **Model: `sonnet` / coder.**
 
 ## Open gates and blockers
 
-**HITL Gate: NONE OPEN for `T3`.** Nothing blocks starting it unattended.
+**HITL Gate: OPEN — PR #80 awaiting human merge.** Do not auto-start `T6` before it lands;
+`T6` edits the same two workflow files `T3` just changed.
+
+**Separately, not blocking `T6`:** `S1b`-T7 cannot require `secrets-scan` or `zizmor` as
+currently planned without resolving or knowingly accepting **F59** (secrets-scan can never
+pass on a fork PR — not fixable from this repo) and **F60** (zizmor is red today on
+`deploy.yml`'s `id-token: write` plus a `dependabot-cooldown` warning). `T7`'s task body in
+`sprint_plan.md` carries the blocking note and the options.
 
 `glunk-works/global-bootstrap#7` (org-wide lock-table question) still awaits a response —
 informational, not blocking.
 
-**Worth noting, not yet acting on:** a pre-existing `zizmor` `excessive-permissions` finding
-on `deploy.yml`'s workflow-level `id-token: write` (surfaced during `T1`'s session, not
-introduced by it). It's a structural property of `T2`'s job design, not something `T3`'s
-scanner-job addition touches — don't fold a fix for it into `T3` without a deliberate scope
-decision.
-
 ## Pointers
 
-- `docs/hardening_roadmap.md` — reference of record and threat model.
-- `sprints/S1_pipeline_hardening/sprint_plan.md` — **top banner first.** Task 3's body has
-  the full scanner-job spec and the `GITLEAKS_LICENSE` deadlock analysis (already resolved).
+- `docs/hardening_roadmap.md` — reference of record and threat model. F59/F60 added in
+  § 3.2 Pipeline.
+- `sprints/S1_pipeline_hardening/sprint_plan.md` — **top banner first.** Task 7's body now
+  carries a blocking note about F59/F60.

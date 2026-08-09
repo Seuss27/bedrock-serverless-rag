@@ -6,20 +6,22 @@ Regenerate this at the end of every working session.
 
 ## Now
 
-**`implementing` — `S1b` (the pipeline rewrite).** `T2`, `T1`, `T3`, `T6` done. `T7` — the
-**last task in the sprint** — is shipped, verified READY, and awaiting merge.
+**`implementing` — `S1b` (the pipeline rewrite).** All five tasks (`T2`, `T1`, `T3`, `T6`,
+`T7`) are merged. **The sprint is NOT done anyway** — its Definition of Done has a standing
+sixth requirement that hasn't been satisfied. Read `Next` below before assuming `/archive-sprint`
+applies.
 
 ## Just done
 
-**`S1b`-T7 shipped as PR #86** (branch `ci/s1b-t7-required-checks`, commit `212ecc3`), open
-and `/pr-checks`-verified **READY**, not yet merged. Direction given: fix `F59`/`F60` at the
-cause rather than hold them out of the required list or accept the cost.
+**`S1b`-T7 merged as PR #86** (`cfed547`); its cursor sync merged as PR #87 (`bae7a13`).
+Direction given: fix `F59`/`F60` at the cause rather than hold them out of the required list
+or accept the cost.
 
 - **F59 closed.** `secrets-scan` no longer uses `gitleaks/gitleaks-action` — its own wrapper
   code enforces a `GITLEAKS_LICENSE` secret for any org-owned repo, and GitHub withholds
   every secret from a fork PR. It now runs the raw, MIT-licensed `gitleaks` CLI directly via
   a pinned `ghcr.io/gitleaks/gitleaks` digest — no secret consumed at all. Verified locally
-  against this repo's real history (133 commits, no leaks) **and** in real CI on this PR.
+  against this repo's real history (133 commits, no leaks) **and** in real CI.
 - **F60 closed.** `deploy.yml`'s workflow-level `id-token: write` moved to job-scoped grants
   on its three credentialed jobs; `dependabot.yml` gained a 7-day `cooldown`. Verified
   locally with the pinned `zizmor` image (zero findings) **and** in real CI.
@@ -27,37 +29,47 @@ cause rather than hold them out of the required list or accept the cost.
   4 of the 5 newly-required checks resolve their tool version at `latest` by default —
   `zizmor`'s was pinned in this same change (`1.29.0`); the other two
   (`opentofu/setup-opentofu`'s `tofu_version`, `terraform-linters/setup-tflint`'s
-  `tflint_version`) are recorded as new finding **F61** rather than fixed here — a version
-  pin interacts with this repo's `required_version` constraints and the deferred `SD`
-  sprint's devcontainer-parity plan, a separate decision.
-- Also fixed: two stale comments (`deploy.yml`, `CLAUDE.md`) this same diff would have left
-  self-contradictory. `gitleaks`'s deliberate `--all` (every-branch, not just `main`) scan
-  scope was investigated (confirmed via `-l debug`) and documented as a considered tradeoff,
-  not silently accepted — narrowing it via `--log-opts` was considered and rejected as
-  riskier than the residual it would close.
-- **Sequence followed architect's explicit recommendation:** pushed the branch, watched all
-  6 checks go green in real CI **first**, then applied the live ruleset `PUT` (read-modify-
-  write, preserving all 4 existing rule types) so the PR's own required-checks state could be
-  observed matching the new ruleset before merge — confirmed via the rules endpoint (exact
-  6-value set match) and a green `ruleset-drift.yml` dispatch against the updated ruleset.
+  `tflint_version`) are recorded as new finding **F61** — a version pin interacts with this
+  repo's `required_version` constraints and the deferred `SD` sprint's devcontainer-parity
+  plan, a separate decision.
+- The live branch-protection ruleset was updated (`gh api -X PUT`, read-modify-write) with
+  all six checks (`pr-title`, `tofu-fmt`, `tofu-validate`, `tflint`, `secrets-scan`,
+  `zizmor`), verified via the rules endpoint and a green `ruleset-drift.yml` dispatch —
+  **before** `#86` merged, so its own required-checks state was observed matching the new
+  ruleset first (`S1b`'s DoD requirement).
+- **PR #87 briefly showed `zizmor` red on its own head SHA** — expected, not a regression:
+  it was cut from `main` before `#86` merged, so it was testing `main`'s still-unfixed
+  `deploy.yml`/`dependabot.yml`. Self-resolved once the branch picked up `main`'s post-`#86`
+  content and re-ran green; merged normally through the required checks, no bypass used.
 
 ## Next
 
-**Merge PR #86.** `/pr-checks` already verified it READY — all 6 required checks
-(`pr-title`, `tofu-fmt`, `tofu-validate`, `tflint`, `secrets-scan`, `zizmor`) green.
+**`S1b`-T7 is merged, but the sprint is not done.** Re-reading `sprint_plan.md`'s Definition
+of Done (as this cursor's own prior note said to do before declaring completion) surfaced a
+**standing requirement no task run since `T2` has satisfied**: a full
+`destroy → apply → verify` cycle, **human-watched**, run against the FINAL shape (split
+`ci.yml`/`deploy.yml`, all five required checks live, `F59`/`F60`'s fixes). `T2` deleted the
+workflow file `MW`'s original proof was measured against, so nothing since has demonstrated
+the shipped pipeline can actually stand the system up.
 
-**This is `S1b`'s last task.** Once merged, run **`/archive-sprint`** — but first re-check
-`sprint_plan.md`'s Definition of Done section for the `MW` re-run acceptance criterion (a
-fresh `destroy → apply → verify` cycle against the final `ci.yml`/`deploy.yml` shape) before
-declaring the sprint fully done; don't assume it was already satisfied without checking.
+**Present this to the human — do not dispatch or approve any of it unattended:**
+1. Dispatch `destroy-ai-lab` on `main` with the exact confirm phrase `destroy-ai-lab`, let
+   it complete.
+2. Merge a trivial change to `main` to trigger `tofu-plan-main` → `tofu-apply`.
+3. Approve the `production` Environment's approval request.
+4. Confirm the apply succeeds. Expect the AOSS collection alone to take ~11 minutes — check
+   **which step** is actually slow before reading elapsed time as stuck (the `MW` lesson).
+
+Only once this cycle is confirmed (or the human explicitly decides to waive/defer it — their
+call) does `/archive-sprint` apply.
 
 **Model: `sonnet` / coder.**
 
 ## Open gates and blockers
 
-**HITL Gate: OPEN — PR #86 awaiting human merge.** The live branch-protection ruleset is
-**already updated and live** (not an open action — done deliberately before merge, per
-`S1b`'s Definition of Done). What's open is only the merge click.
+**HITL Gate: OPEN — the destroy/apply/verify cycle above is human-watched by the sprint
+plan's own words and BR-D25.** Do not dispatch `destroy-ai-lab` or approve a `tofu-apply`
+unattended.
 
 `glunk-works/global-bootstrap#7` (org-wide lock-table question) still awaits a response —
 informational, not blocking.
@@ -68,7 +80,7 @@ yet — flag it for whoever plans the next sprint.
 ## Pointers
 
 - `docs/hardening_roadmap.md` — reference of record and threat model. `F59`/`F60` now
-  `✅ CLOSED`; new `F61` recorded. `S1b`'s status row still needs updating to `complete` —
-  do that in the post-merge cursor sync, matching the pattern used after `T3` and `T6`.
-- `sprints/S1_pipeline_hardening/sprint_plan.md` — Task 7 is the sprint's last task; its
-  Definition of Done section is the next thing to re-check.
+  `✅ CLOSED`; new `F61` recorded. `S1b`'s status row still says `implementing` — correct,
+  don't mark it `complete` until the DoD's final cycle is run or explicitly waived.
+- `sprints/S1_pipeline_hardening/sprint_plan.md` — Definition of Done section (the paragraph
+  starting `**`S1b` (~~T2, T1, T4, T3, T6, T7~~**`) is the authoritative text for what remains.

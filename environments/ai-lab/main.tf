@@ -1,11 +1,18 @@
-# No-op touch, S1b-T7: deliberately triggers deploy.yml's tofu-plan-main -> tofu-apply so
-# S1b's Definition of Done can be satisfied -- a destroy -> apply -> verify cycle,
-# human-watched, run against the FINAL split ci.yml/deploy.yml shape (all five required
-# checks live, F59/F60's fixes, job-scoped deploy.yml permissions). Nothing since T2 deleted
-# deploy-ai-lab.yml has exercised this; the last real cycle (MW-T6) proved a file that no
-# longer exists. AWS is empty as of the 2026-08-08 teardown (BR-D26); this apply is the
-# create half, dispatch destroy-ai-lab afterward for the destroy half. No code change was
-# otherwise required -- see PR #53/#64 for the same pattern used for the same reason.
+# No-op touch, retry: the first S1b-T7 DoD attempt (PR #89, run 31330995230) got through
+# every resource except the vector index -- S3 bucket, KB execution role, budget, AOSS
+# collection (3m13s) and its security/data-access policies all created clean under the
+# job-scoped credentials. terraform_data.init_vector_schema's local-exec then hit
+# AuthorizationException on its FIRST attempt, 1.6s after the data-access-policy itself
+# finished creating -- create_index.py treats that exception as non-retryable by design
+# (F46: a genuinely wrong principal can never resolve by waiting), but this looks like AOSS
+# access-policy propagation lag on a policy that is seconds old, not a wrong principal.
+# Verified directly against live AWS (read-only, admin-sso) before retrying rather than
+# guessing: aoss:APIAccessAll IS granted on the CI role's OpenTofuStateAccess policy, and
+# the collection's data-access-policy Principal list already includes the CI role's plain
+# IAM role ARN (not an assumed-role session, which was F5's original mechanism -- both
+# checks came back clean). The failed local-exec provisioner taints its resource (no
+# on_failure = "continue" set), so this apply recreates only that one resource against
+# everything else, which is already live.
 module "rag_backend" {
   source = "../../modules/aws-bedrock-rag"
 

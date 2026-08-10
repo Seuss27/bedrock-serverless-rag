@@ -7,71 +7,67 @@ Regenerate this at the end of every working session.
 ## Now
 
 **`implementing` — `S2` (Identity, state reconciliation, and `bootstrap/` retirement).**
-Task 1 is merged. Task 2's code is shipped as **PR #106**, open, awaiting human review,
-merge, and a `bootstrap/` hand apply.
+Task 1 merged. **Task 2 is complete on both halves**: the `bootstrap/` grant merged as
+PR #106 and was human-applied 2026-08-10; the encryption block is shipped as **PR #109**,
+open, awaiting review and merge.
 
 ## Just done
 
-Implemented and shipped **S2 Task 2**'s `bootstrap/` policy edit, 2026-08-10, as
-**PR #106** (`sprint/s2-t2-kms-bridge-grant`, commit `759aa37`):
+**S2 Task 2's encryption half**, 2026-08-10, as **PR #109**
+(`sprint/s2-t2-state-encryption`, commit `5d808ec`):
 
-- Added `bootstrap/state-migration.tf`: two new variables (`state_kms_key_arn`,
-  `org_state_bucket_name` — both restricted-not-secret BR-D4, no committed default,
-  `TF_VAR_`-sourced, mirroring `global-bootstrap`'s own no-default pattern for identical
-  cross-repo values) and two new `aws_iam_role_policy` resources on the **local**
-  `github-actions-deploy-role`:
-  - `state_kms_access_policy` — `kms:Decrypt`/`GenerateDataKey`/`DescribeKey` on the
-    upstream BR-D22 state-encryption key, mirroring Task 0c's identical statement already
-    live on both upstream roles.
-  - `state_migration_bridge` — Task 3's read-only org-bucket bridge (prefix-scoped
-    `s3:ListBucket`/`s3:GetObject`, condition copied verbatim from upstream
-    `pipeline_state_policy`), applied here so both grants ride the same `bootstrap/` apply.
-- Validated: `tofu fmt`/`validate` clean (`bootstrap`, `-backend=false`).
-- Ran `security-critic` (`review.ci_gate` is `null` — the only critic look this diff got).
-  Fixed 2 of 4 findings: `state_kms_key_arn` had no wildcard-rejection validation despite
-  rendering the **entire** IAM `Resource` string (added the guard + an ARN-prefix check);
-  the bridge policy's comment misattributed which existing statement actually bounds S3
-  enumeration exposure (corrected). Recorded 2 as an in-file residual for **Task 4** rather
-  than an unverified fix: pairing this KMS grant with the local role's pre-existing,
-  already-accepted-temporary flat S3 `"*"` grant composes into a theoretical cross-project
-  state-decrypt path; and this grant sits on a role whose OIDC trust still admits
-  `:pull_request` (F2, open) for the Task 2 → Task 4 window.
-- Shipped as PR #106, labeled `chore` / `area/bootstrap` / `status/needs-human`.
+- `environments/ai-lab/encryption.tf` (new) — `aws_kms` key provider against the upstream
+  org state key, `aes_gcm` method, **`enforced = true`**. **No `fallback`**: the state
+  object was an empty 373-byte skeleton tracking **zero** resources (verified before
+  deleting) and was deleted, so the first apply writes ciphertext from scratch (BR-D20).
+- `deploy.yml` — `TF_VAR_state_kms_key_arn` from `secrets.STATE_KMS_KEY_ARN` on all three
+  credentialed jobs; also adds the `Clean up plan files` step `destroy-ai-lab` lacked.
+- **A blocker was reported and withdrawn the same day.** I measured that
+  `tofu init -backend=false` needed AWS credentials and concluded `ci.yml`'s uncredentialed
+  `tofu-validate` required check would break. Confounded by an already-initialized local
+  `.terraform` — and **CLAUDE.md's claim that `-reconfigure` fixes that is false**, which is
+  corrected in PR #109. Re-measured clean: `-backend=false` never evaluates the encryption
+  block. **Do not re-derive this locally without moving `.terraform` aside first.**
+- **Critic gate: 3 rounds, converged at the cap** (`docs-consistency` + `security-critic`).
+  14 findings, 12 fixed, 1 deferred, 1 cleared. `enforced = true` came from that pass.
 
 ## Next
 
-**PR #106 needs human review and merge:** https://github.com/glunk-works/bedrock-serverless-rag/pull/106
+**PR #109 needs review and merge:** https://github.com/glunk-works/bedrock-serverless-rag/pull/109
 
-**Then a human must apply `bootstrap/` by hand under admin SSO** — it is never applied by
-CI — with `TF_VAR_state_kms_key_arn` and `TF_VAR_org_state_bucket_name` set (values from
-`glunk-works/global-bootstrap`'s `state_kms_key_arn` / `state_bucket_name` outputs).
+**Then two human actions, and the second is easy to get backwards:**
 
-**Only once that apply is confirmed live**, add the `terraform { encryption { ... } }`
-block (`aws_kms` key provider, pointed at the upstream key) to
-`environments/ai-lab/providers.tf`. Do not add that block or merge it before the apply
-lands: `tofu init` needs `kms:Decrypt` to plan once the block exists, and nothing grants
-it until the `bootstrap/` apply runs.
+1. Merge the PR.
+2. **APPROVE** the resulting `tofu-apply`. Every recent push-to-`main` apply was correctly
+   **declined** because it predated the encryption block — **this one is the opposite.**
+   It is one of only two rebuilds S2 accepts, and it writes the first encrypted state.
+3. Verify Task 2's acceptance criterion: the state object must **not parse as JSON**. That
+   is the only check that distinguishes native encryption from SSE.
 
-**Model: `sonnet` / coder** (unchanged from this session).
+**Then S2 Task 3** (`sprint_plan.md` lines 507–555): repoint `environments/ai-lab/backend.tf`
+at the org bucket, `key = "bedrock-serverless-rag/terraform.tfstate"` — the prefix **must**
+equal the `var.projects` map key byte for byte, or the role's `s3:prefix` condition denies
+access and the failure reads as a credentials error, not a naming one — then
+`tofu init -migrate-state` by hand under admin SSO. **Task 3 needs no `bootstrap/` apply of
+its own:** its read-only bridge policy is already live, having ridden Task 2's.
+
+**Model: `sonnet` / coder.**
 
 ## Open gates and blockers
 
-**HITL Gate: OPEN.** PR #106 needs human review + merge, then a human must apply
-`bootstrap/` by hand under admin SSO before the encryption block can be added to
-`environments/ai-lab` — do not add that block or merge it before the apply is confirmed
-live.
+**HITL Gate: OPEN.** PR #109 needs human review + merge, then the **approve** (not decline)
+of its `tofu-apply`, then the not-JSON verification. Task 3's migration is a separate manual
+admin-SSO operation, never a CI action.
 
-**Not filed this session**, worth a tracked issue before Task 4 executes: the two
-security-critic residuals recorded in `bootstrap/state-migration.tf`'s header comment
-(cross-project state-decrypt composition risk from the local role's pre-existing flat S3
-grant plus this new KMS grant; the F2 `pull_request`-trust exposure window on that same
-role for the Task 2 → Task 4 interval).
+**Not filed, deliberately** (`security-critic` #1, LOW): no required check can *see* the
+encryption block, so deleting `encryption.tf` or its `enforced = true` line passes all six
+checks green and the next apply writes plaintext. `enforced` closes the realistic accident
+but is not self-defending. Sketched fix and the reasons for deferring are in
+`.ai/state.json`'s `known_followups`.
 
 ## Pointers
 
-- `docs/hardening_roadmap.md` — reference of record and threat model. Unchanged this
-  session.
-- `sprints/S2_identity_least_privilege/sprint_plan.md` — Task 1 (done, lines ~360–391);
-  Task 2 (code shipped as PR #106, lines ~395–429); the `bootstrap/` half of Task 3's
-  read-only bridge (spec at lines ~433–479) rides the same apply, applied here per Task 2's
-  own instruction.
+- `docs/hardening_roadmap.md` — reference of record and threat model. Unchanged this session.
+- `sprints/S2_identity_least_privilege/sprint_plan.md` — Task 1 (done, 360–394); **Task 2
+  (395–506)**, carrying a dated banner with the measured `-backend=false` matrix; **Task 3
+  (507–555)**, next up.

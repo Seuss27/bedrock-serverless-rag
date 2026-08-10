@@ -109,8 +109,16 @@ if no gate existed on a repo that has one.
   gets creds.
 - **`-backend=false` fails in a directory that has already been initialized against the S3
   backend** (`.terraform/terraform.tfstate` still names it, so init reaches for credentials
-  and dies on IMDS). This is a local-workstation wrinkle only — CI checks out clean. Run
-  `tofu init -backend=false -reconfigure`, or validate from a clean copy.
+  and dies on IMDS). This is a local-workstation wrinkle only — CI checks out clean.
+  ~~Run `tofu init -backend=false -reconfigure`, or validate from a clean copy.~~
+  **⚠️ Corrected 2026-08-10: `-reconfigure` does NOT fix it** — measured; the flag does not
+  clear the recorded backend, and the credential error is identical with and without it. Move
+  `.terraform` aside, or validate from a clean copy. **This is not a cosmetic correction:** the
+  stale advice made a session conclude that `environments/ai-lab`'s new `encryption.tf`
+  required AWS credentials at validate time and would therefore break the uncredentialed
+  `tofu-validate` required check. It does not — `-backend=false` never evaluates an encryption
+  block (see `encryption.tf`'s header). A false blocker reported from this wrinkle is the
+  expected failure mode, so re-measure from a clean copy before believing one.
 - **No infra change reaches AWS without a visible plan and a human approval** (BR-D2).
   ~~This is currently **violated by `deploy-ai-lab.yml`**, which runs `tofu apply -auto-approve`
   on every push to `main` with no environment gate — S1-T5 fixes it.~~ **✅ HELD as of
@@ -258,11 +266,23 @@ dispatch tore all 12 resources down in one clean pass (run `31274829358`).** The
 retired by passing once: `S1b`-T2 **deletes the workflow file that proof was measured against**,
 which is why re-running the cycle against the split `ci.yml`/`deploy.yml` is `S1b`'s own
 Definition of Done. ~~**As of this writing the lab is deliberately torn down** — nothing is
-deployed, and a merge to `main` will offer to rebuild it.~~ **Stale as of 2026-08-09: a
+deployed, and a merge to `main` will offer to rebuild it.~~ ~~**Stale as of 2026-08-09: a
 docs-only merge (PR #92) itself re-triggered a rebuild `tofu-apply` — every push to `main`
 does, path or no path — and that apply ran for real and got 11 of 12 resources up before
 failing on the vector index. No `destroy-ai-lab` has run since, so 11 resources are live
-right now, not zero.** This is exactly why "torn down" is a `.ai/next-steps.md` fact, not a
+right now, not zero.**~~ **✅ CORRECTED 2026-08-10, and this snapshot has now been wrong in
+BOTH directions — which is the argument for the rule that follows, not against it.** A
+`destroy-ai-lab` **did** run later the same evening: dispatch `31337481993`, 2026-08-09
+21:41Z, `success` — about seven minutes after the apply in run `31337095575` (21:33–21:34Z)
+finished the build that PR #92's own apply had left incomplete. **Nothing is deployed.**
+Measured two independent ways on 2026-08-10: `tofu -chdir=environments/ai-lab state list`
+returns **zero** resources, and **no `tofu-apply` since that destroy has applied anything** —
+some declined at the Environment gate, some cancelled before the job ran, some still waiting
+on approval. *(Deliberately not phrased as "every run since is a `failure`": three of them
+are `cancelled` and two are still pending, and this is the file that teaches readers not to
+reason from a run-level conclusion.)* *(`S2`-T2
+then deleted the state object itself — empty, 373 bytes, zero resources — so an absent state
+in this root means "torn down", not "orphaned".)* This is exactly why "torn down" is a `.ai/next-steps.md` fact, not a
 `CLAUDE.md` one — check that file (or AWS directly) for the live answer rather than trusting
 a snapshot here, which is the whole point of keeping this file "local truth" and the cursor
 external.
@@ -294,8 +314,10 @@ precious" is true of this lab and false of the account it runs in.
   from the first log line onward. So on GitHub specifically, "restricted, use a variable"
   and "never in a workflow log" are in direct conflict, and `secrets.*` is the only
   mechanism that delivers what this rule actually wants. `deploy.yml`'s (formerly
-  `deploy-ai-lab.yml`'s, renamed by `S1b`-T2) deploy role ARN, the source bucket name, and
-  the AOSS data-plane SSO principal ARN now ride
+  `deploy-ai-lab.yml`'s, renamed by `S1b`-T2) deploy role ARN, the source bucket name, the
+  AOSS data-plane SSO principal ARN, and — added 2026-08-10 by `S2`-T2 — the **state-encryption
+  KMS key ARN** (`secrets.STATE_KMS_KEY_ARN`, which embeds the account id, so a `vars.*` value
+  would print it into every step's preamble) now ride
   `secrets.*` for exactly this reason — restricted-not-secret by this rule's own
   definition, but a workflow-log exception to it, recorded in-file at each use. **The rule
   is unchanged everywhere else** — `.env`, `tofu` CLI invocations outside CI, and anywhere
@@ -370,13 +392,14 @@ aws sso login --profile admin-sso
 
 # `TF_VAR_<name>` is OpenTofu's own variable mechanism and `AWS_PROFILE` is the SDK's — no
 # wrapper is involved in either. The first three are what the wrapper used to inject; the
-# fourth arrived with S0's `budget.tf`, the fifth with MW-T4's AOSS principal fix — both are
-# just as required.
+# fourth arrived with S0's `budget.tf`, the fifth with MW-T4's AOSS principal fix, the sixth
+# with S2-T2's state encryption — all three are just as required.
 $env:AWS_PROFILE                      = 'admin-sso'   # bootstrap/providers.tf sets no profile (F49)
 $env:TF_VAR_aws_region                = '<region>'    # has a default; override only if needed
 $env:TF_VAR_data_source_bucket_name   = '<bucket>'    # no default — required
 $env:TF_VAR_budget_notification_email = '<email>'     # no default — required; PII, never commit it
 $env:TF_VAR_data_plane_principal_arns = '["<deploy-role-arn>","<sso-role-arn>"]'  # no default — required; HCL list literal, not comma-separated
+$env:TF_VAR_state_kms_key_arn         = '<kms-key-arn>'  # no default — required by any REAL init (S2-T2/BR-D22, encryption.tf)
 
 tofu -chdir=environments/ai-lab plan
 ```

@@ -77,10 +77,17 @@ variable "org_state_bucket_name" {
 }
 
 # 1. KMS access to the upstream state-encryption key (BR-D22, Task 0c step 1b's decision).
-# Without this, the encryption {} block Task 2 adds to environments/ai-lab/providers.tf
-# breaks tofu-plan-main on the very next merge: tofu init must decrypt state to plan, and
-# this root has zero kms: grants today. Same three verbs as both upstream roles' identical
-# statement -- not an asymmetric read/write split.
+# Without this, the encryption {} block Task 2 adds to environments/ai-lab/encryption.tf
+# breaks tofu-plan-main on the very next merge: every real tofu init evaluates the encryption
+# block and reaches KMS. Same three verbs as both upstream roles' identical statement -- not
+# an asymmetric read/write split.
+#
+# ⚠️ Two authoring-time claims that were true when this file was written and are NOT now, left
+# here corrected rather than silently deleted (S2-T2, 2026-08-10): this root no longer has
+# "zero kms: grants" -- the resource below IS that grant, and it is applied and live. And the
+# mechanism for the immediate case is WRITE, not read: the ai-lab state object was deleted
+# while empty, so the next apply has nothing to decrypt and needs GenerateDataKey to write
+# ciphertext from scratch. Both verbs are granted; only the reasoning changed.
 resource "aws_iam_role_policy" "state_kms_access_policy" {
   name = "StateEncryptionKeyAccess"
   role = aws_iam_role.github_actions_role.id

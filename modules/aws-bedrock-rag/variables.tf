@@ -18,3 +18,8 @@ variable "data_plane_principal_arns" {
     error_message = "Each principal must be an IAM role ARN, not an sts assumed-role ARN."
   }
 }
+
+variable "permissions_boundary_name" {
+  type        = string
+  description = "Name of the IAM permissions-boundary policy at path /bedrock-rag/, created upstream in glunk-works/global-bootstrap (S2-T0c). The module builds the full ARN from data.aws_caller_identity.current.account_id -- never pass an ARN or a value containing an account id here (BR-D4). No default: this name is owned upstream, not by this module -- defaulting it here too would give the same fact three independent literals to drift out of sync (module default, environment default, upstream resource name)."
+}

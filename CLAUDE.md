@@ -411,9 +411,24 @@ mismatch there is not evidence of misconfiguration.
 - **`sprints/*/sprint_plan.md`** — the per-sprint plans: S0, **ST**, **MW**, S1, S2, S3+S4
   (merged), S5, S6, plus **SD** which is **deferred** on a Docker precondition, not parallel.
   Each carries a **Critical review** section recording the security, logic, and execution
-  objections raised against it — read that before executing the tasks, not after. **Sprints
+  objections raised against it — read that before executing the tasks, not after. ~~**Sprints
   reshaped by BR-D23 carry a banner under the title naming what was cut, moved or kept; the
-  task bodies below it were not all rewritten, so the banner wins.**
+  task bodies below it were not all rewritten, so the banner wins.**~~
+  **⚠️ "The banner wins" was a description of rot, and it is RETIRED as a rule — 2026-08-10,
+  after S2's fourth re-scope (PR #97).** It told every reader that a task body may contradict
+  the banner above it and that this is normal, which is exactly how `S1`'s plan came to carry a
+  banner asserting a correction its own body denied. **The convention now splits by what the
+  text is for:**
+  - **Decisions, findings and status rows are annotated IN PLACE** — struck through, dated,
+    with the superseded claim left visible. That record is the point, and this repo's whole
+    ability to catch its own drift depends on it. Unchanged.
+  - **Task bodies are REWRITTEN to agree with the banner, and the banner is dated and says so.**
+    A task body is not a record, it is an **instruction someone executes literally**, later,
+    against shared infrastructure. A stale one is a latent defect, not a historical note.
+    `sprints/S2_identity_least_privilege/sprint_plan.md` is the worked example: four historical
+    banners retained, bodies rewritten beneath them, and the fourth banner naming what changed.
+  **If you re-scope a sprint and cannot rewrite the bodies, say so in the banner explicitly** —
+  do not leave the reader to infer precedence from this file.
 - **`glunk-works/global-bootstrap`** — **read this before touching `bootstrap/`.** It is the
   organization's IaC foundation: the org state bucket + lock table (with per-project prefix
   isolation), and **one CI role per project** generated from `var.projects` — which

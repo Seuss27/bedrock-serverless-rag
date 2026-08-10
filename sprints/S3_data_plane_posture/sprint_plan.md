@@ -14,7 +14,7 @@
 > | **T4** Customer-managed KMS key | **CUT.** |
 > | **T5** Tag every resource | **Keep** — ten lines, and cost attribution is real on OCU-hour billing. |
 > | **T6** Parameterize names | **Folded into `MW-T1`.** The original conceded *"doing it during the rebuild costs nothing at all"*; doing it separately buys a second replacement cycle for nothing. |
-> | **T7** Provider versions + backend locking | **Keep**, sequenced **after S2-T4**, which changes the backend. ⚠️ **BR-D22 amended the locking half: `use_lockfile` is NOT adopted and `dynamodb_table` stays.** |
+> | **T7** Provider versions + backend locking | **Keep**, sequenced **after S2-T4**, which changes the backend. ~~⚠️ **BR-D22 amended the locking half: `use_lockfile` is NOT adopted and `dynamodb_table` stays.**~~ **⚠️ REVERSED and SHIPPED — corrected 2026-08-09.** BR-D22 was re-amended 2026-08-07: `use_lockfile = true` is live in `environments/ai-lab/backend.tf` with **no** `dynamodb_table`, and `bootstrap/`'s lock table is already deleted. **T7's locking half is fully done**; only the provider-version split remains — and S2 deletes `bootstrap/`, which is the `~> 6.0` side, so **that half dissolves too**. |
 > | **T8** Remove Infisical + SSM pilot | **SPLIT.** The Infisical deletion moved **earlier, to S0**. The SSM canary moved **upstream** to `glunk-works/global-bootstrap` (roadmap § 9.5). Nothing of T8 remains here. |
 >
 > **Dependencies changed:** this sprint now depends on **`MW`**, not on "S2-T1", and the
@@ -400,7 +400,7 @@ propose `architect` (the replacement hazards are the whole risk here) and `secur
   renaming during `MW`'s rebuild costs nothing, whereas preserving the current bad names would
   freeze them permanently. The name fix is therefore folded into the rebuild (BR-D23) rather
   than run as a separate no-op refactor.
-- **Task 7's `use_lockfile` half is now moot — `dynamodb_table` STAYS** (BR-D22, amended
+- ~~**Task 7's `use_lockfile` half is now moot — `dynamodb_table` STAYS**~~ **⚠️ FALSE as of 2026-08-07, corrected 2026-08-09: `use_lockfile = true` SHIPPED and `dynamodb_table` is GONE.** The original note follows. (BR-D22, amended
   2026-08-05). This bullet used to argue for *splitting* the provider bump from a
   `dynamodb_table` → `use_lockfile` switch so a broken plan could be attributed to one half.
   Sound reasoning, but the switch is no longer happening at all: the lock table this repo

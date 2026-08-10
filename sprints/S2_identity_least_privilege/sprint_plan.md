@@ -90,7 +90,7 @@
 >    Task 3's reconciliation criterion; the lab must be UP before the migration.
 > 8. **`ci.yml` already defuses the matrix trap** — `tofu-validate` covers `bootstrap/` as
 >    sequential steps in one job, not a matrix, precisely so the check-run name stays bare.
->    Removing `bootstrap/` in Task 5 deletes two steps and cannot rename a required check.
+>    Removing `bootstrap/` in Task 5 deletes **one step** and cannot rename a required check.
 >
 > ### Decisions taken by this pass
 >
@@ -113,7 +113,8 @@
 >   need one apply, and Task 5 cannot proceed without Task 3 anyway.
 > - **Old Tasks 1 and 6 stay MOVED to `MW`** (complete). Not repeated below.
 >
-> **Result: 6 tasks, 3 upstream human applies, 3 local `bootstrap/` human applies, and one
+> **Result: 6 tasks (0–5) plus one OPTIONAL Task 6, 3 upstream human applies, 3 local
+> `bootstrap/` human applies, and one
 > manual state migration.** That is more human-apply surface than `MW`, `S1a` and `S1b`
 > combined — treat any opportunistic addition to this sprint as needing an explicit reason.
 > **F61 (floating tool versions) is deliberately NOT taken here**; it is deferred to `S3+S4`.
@@ -124,8 +125,8 @@
 provider, no CI role, no state bucket, **and no `bootstrap/` directory** — and state
 confidentiality that does not depend on who can read the bucket.
 
-**Closes:** F1 (Critical), F2, F3, F4, F40, F43, F47 (local half), **F48 (by removal)**, **F56**,
-**F58** (gap b), the `permissions_boundary` half of **F57**, and the local half of F47.
+**Closes:** F1 (Critical), F2, F3, F4, F40, F43, **F47 (local half only)**, **F48 (by removal)**,
+**F56 (gaps a AND b)**, **F58 (gap b only)**, and the `permissions_boundary` half of **F57**.
 Executes **BR-D22**, **BR-D18**, **BR-D27**.
 *(F5, F39, F51 closed in `MW`. **F42 is NOT closed here** — ST deleted the offending policy
 rather than correcting it, so F42 survives org-wide against the three other project policies:
@@ -176,7 +177,8 @@ identity **while the old role still exists as a fallback**.
 | Task 5 | **down** | |
 
 **Decline the rebuild approval on every other merge.** Every push to `main` queues one
-(`S1a`-T5 removed the `paths:` filter deliberately); with ~8 PRs in this sprint, that is ~8
+(`S1a`-T5 removed the `paths:` filter deliberately). Three of this sprint's PRs (0a, 0b, 0c) are
+against `glunk-works/global-bootstrap` and queue nothing here, so that is roughly five
 prompts and only two of them should be accepted.
 
 ---
@@ -184,7 +186,9 @@ prompts and only two of them should be accepted.
 ## Tasks
 
 ### Task 0 — Re-create the upstream project entry, WITH the boundary
-**(F56, F58 gap b, F57 boundary half, F2, BR-D27) — BLOCKING**
+**(F56 gaps a+b, F58 gap b, F2, BR-D27) — BLOCKING**
+*(⚠️ F57's `permissions_boundary` half is **Task 1's**, not this task's — it is the module
+attribute on `bedrock_kb_role`, not the upstream policy. Corrected 2026-08-09.)*
 
 > **⚠️ Read `ST` Task 2b before writing a line of this.** It is retained verbatim in
 > `sprints/ST_org_transfer/sprint_plan.md` and is **normative**. It enumerates three independent
@@ -205,7 +209,11 @@ lands, with no irreversible act waiting on it and no pressure to weaken it to un
 
 - **Description:** Add the mechanism BR-D27 specifies, **keeping `StringLike` untouched**, so the
   rendered subject strings are byte-identical and the change is a provable no-op.
-  1. `variables.tf` — add `oidc_subject_prefix = optional(string, null)` to the `projects` object.
+  1. `variables.tf` — add **two** optional keys to the `projects` object:
+     `oidc_subject_prefix = optional(string, null)` (BR-D27), and
+     `extra_plan_oidc_subjects = optional(list(string), [])`. **The second closes F56 gap (a)**
+     and is not optional work — see the box under Task 0b. Declared here, *consumed* in Task 0b,
+     so this PR stays a no-op.
   2. `main.tf` — add `locals.subject_prefix`, defaulting to the existing computed plain form
      (`coalesce(v.oidc_subject_prefix, "repo:${var.github_organization}/${v.repo_name}")`), and
      thread it through the apply role's subject construction.
@@ -223,13 +231,37 @@ lands, with no irreversible act waiting on it and no pressure to weaken it to un
 
 ---
 
-#### Task 0b — upstream: `StringLike` → `StringEquals` on the apply role (F2), ALONE
+#### Task 0b — upstream: the two trust-policy shape changes (F2, **F56 gap a**)
 
-- **Description:** One change, one file, one variable. F2's entire substance is that *in IAM
-  `StringLike`, `*` matches `:` too* — so an `extra_oidc_subjects` entry containing a `*` would
-  glob silently. Every rendered value is wildcard-free today, which makes this behaviour-
-  preserving; it is **not** cosmetic, because it removes the mechanism rather than relying on the
-  values staying clean.
+- **Description:** The PR that accepts in-place trust-policy diffs. Both changes below are
+  behaviour-preserving for the three sibling projects and are verified the same way.
+  1. **`main.tf` — `StringLike` → `StringEquals` on the apply role (F2).** F2's entire substance
+     is that *in IAM `StringLike`, `*` matches `:` too* — so an `extra_oidc_subjects` entry
+     containing a `*` would glob silently. Every rendered value is wildcard-free today, which makes
+     this behaviour-preserving; it is **not** cosmetic, because it removes the mechanism rather
+     than relying on the values staying clean.
+  2. **`plan_roles.tf` — consume `extra_plan_oidc_subjects` (F56 gap a).** Today the plan role's
+     subject is a **bare string**, `"repo:<org>/<repo>:pull_request"`, with no way to add another.
+     Replace it with `concat(["${local.subject_prefix[each.key]}:pull_request"], [for s in
+     each.value.extra_plan_oidc_subjects : "${local.subject_prefix[each.key]}:${s}"])`.
+     ⚠️ **This renders a one-element list where a bare string stood, for every existing plan role
+     — which IS a plan diff, and is why it lives here and not in Task 0a.** It is nonetheless
+     behaviour-identical: **IAM treats a condition value as a set, so a one-element list and a
+     bare string are equivalent** (`bootstrap/oidc-setup.tf` states the same thing for the same
+     reason). Keep `StringEquals` — the plan role already uses it correctly.
+
+> ### 🔴 Why F56 gap (a) is closed HERE, and not deferred
+> **Found 2026-08-09 by this plan's `docs-consistency` pass.** The first draft of this sprint
+> addressed only F56 gap (b) — the missing workload read policy — while still claiming
+> `Closes: F56` unqualified. Gap (a) is that the plan role trusts **only** `:pull_request`, so no
+> push-triggered job can ever assume it. That is not a latent nuisance: `deploy.yml`'s shipped
+> `tofu-plan-main` job is **push-triggered** and carries
+> `${{ secrets.AWS_PLAN_ROLE_ARN || secrets.AWS_OIDC_ROLE_ARN }}`, so **Task 4 step 1's act of
+> creating that secret would silently repoint it at a role it cannot assume and break every merge
+> to `main`.** Closing gap (a) here is what makes Task 4 safe. Task 0c then sets
+> `extra_plan_oidc_subjects = ["ref:refs/heads/main"]` for this project.
+> **This is a read-only role**, so trusting the `main` ref costs nothing that
+> `:pull_request` did not already cost — the containment is the policy, not the trigger.
 - **⚠️ This is the largest blast radius in the sprint.** It rewrites the `assume_role_policy` of
   `bounty-infra`, `tri-loop-dev` and `resume-optimizer`. It was originally packaged with Task 0a
   and mis-described as *"provably safe because it plans `No changes.`"* — **it does not; it plans
@@ -244,9 +276,10 @@ lands, with no irreversible act waiting on it and no pressure to weaken it to un
      2026-08-09 — `tri-loop-dev` and `resume-optimizer` return **404** (most likely "never
      configured", i.e. the plain form, but that is **inference**). Passive waiting would make the
      rollback window *"whenever they next push."*
-- **Target Files:** upstream `main.tf`
+- **Target Files:** upstream `main.tf`, `plan_roles.tf`
 - **Acceptance Criteria:** Plan shows **only** in-place updates to
-  `aws_iam_role.github_actions_role[*]`, **zero replacements**, nothing created or destroyed.
+  `aws_iam_role.github_actions_role[*]` and `aws_iam_role.github_actions_plan_role[*]`,
+  **zero replacements**, nothing created or destroyed.
   Both verification halves above are recorded in the PR body. **Human apply upstream (1 of 3).**
   Rollback stated in the PR body: revert and re-apply.
 
@@ -256,9 +289,26 @@ lands, with no irreversible act waiting on it and no pressure to weaken it to un
 
 - **Description:** An upstream PR re-adding the entry, per **ST Task 2b**:
   1. **`variables.tf`** — `"bedrock-serverless-rag" = { repo_name = …, plan_role = true,
-     extra_oidc_subjects = ["environment:production"], oidc_subject_prefix = <ID-qualified> }`.
+     extra_oidc_subjects = ["environment:production"],
+     extra_plan_oidc_subjects = ["ref:refs/heads/main"], oidc_subject_prefix = <ID-qualified> }`.
+     ⚠️ **`extra_plan_oidc_subjects` is what lets `deploy.yml`'s push-triggered `tofu-plan-main`
+     assume the plan role at all** — without it, Task 4 step 1 breaks every merge to `main`. See
+     the box under Task 0b.
      The prefix value is **not BR-D4 restricted** — a public org name, a public repo name, and two
      GitHub numeric ids readable with `gh api repos/<owner>/<repo> --jq '.id, .owner.id'`.
+  1b. **The state-encryption KMS key (BR-D22) — upstream, and this is a decision, not a detail.**
+     ⚠️ **Found 2026-08-09: the repo has ZERO `kms:` grants anywhere** (`state_access_policy`,
+     upstream `pipeline_state_policy`, upstream `plan_state_read_policy` — none), and **no key
+     exists**. BR-D22 says *"upstream owns the key-provider choice (filed as an issue, § 9.4)"* —
+     but no such upstream issue is open, so that clause is aspirational, not a dependency anyone
+     is discharging. **Task 2 cannot adopt an `aws_kms` key provider without one.**
+     **Decision: the key is created UPSTREAM, beside the state bucket.** It follows directly from
+     BR-D17 (`global-bootstrap` owns state) and from the one alternative being fatal — a key
+     declared in `environments/ai-lab` would be **destroyed by `destroy-ai-lab` along with the
+     state it decrypts**, which BR-D20's cycle runs routinely. Add the key here, and grant
+     `kms:Decrypt`/`GenerateDataKey`/`DescribeKey` on it to **both** this project's roles (step 2
+     and step 3 policies). ⚠️ **`bootstrap/`'s local role needs the same grant for the Task 2/3
+     window** — that half is Task 2's, not this task's.
   2. **`project_policies.tf`** — the workload policy and the permissions-boundary policy document,
      per **Task 2b(1)(2)(3)(5)**.
   3. **`plan_roles.tf`** — a `for_each`ed workload **read** policy (**F56 gap b**: today
@@ -350,8 +400,19 @@ lands, with no irreversible act waiting on it and no pressure to weaken it to un
   writes a **plaintext state version into the org bucket that persists forever**. Encrypting
   first means the migration's write is already ciphertext, and the old bucket's plaintext
   versions die with the bucket in Task 5.
-- **Description:** Add a `terraform { encryption { … } }` block with an `aws_kms` key provider to
-  **`environments/ai-lab` only**.
+- **⚠️ This task carries a `bootstrap/` human apply, and it grants TWO things at once — that is
+  deliberate, and it is what keeps the sprint at three local applies.** *(Added 2026-08-09 by the
+  `docs-consistency` pass, which found the encryption task had no key and no grant behind it.)*
+  1. **`kms:Decrypt` / `GenerateDataKey` / `DescribeKey`** on the key Task 0c step 1b created
+     upstream. **Without this the encryption block breaks `tofu-plan-main` on the very next
+     merge** — `tofu init` must decrypt state to plan, and this repo has **zero `kms:` grants
+     anywhere** today. This is not optional and it must land *before* the encryption block does.
+  2. **The read-only org-bucket bridge policy Task 3 needs** — created here rather than in Task 3
+     so both grants ride one apply. It sits unused for one task, which costs nothing: it is
+     read-only, scoped to this project's own prefix, and grants access to a *copy* of state the
+     role already fully controls in the local bucket. Its full specification stays in **Task 3**.
+- **Description:** Then add a `terraform { encryption { … } }` block with an `aws_kms` key
+  provider — pointed at the **upstream** key — to **`environments/ai-lab` only**.
   **⚠️ AMENDS BR-D22, which says "both roots."** `bootstrap/` is **deleted** in Task 5, not
   encrypted — there is no value in encrypting a root that ceases to exist in the same sprint, and
   the `required_version` floor BR-D22 asks for there becomes void with it.
@@ -381,10 +442,11 @@ lands, with no irreversible act waiting on it and no pressure to weaken it to un
 > unsatisfiable in the old Task 2's position.**
 
 - **Description:**
-  1. **The bridge.** Add a **new, separately named** `aws_iam_role_policy` — e.g.
-     `state_migration_bridge` — to `bootstrap/`. **Not an edit inside `state_access_policy`:** a
-     distinct resource makes the temporary thing visible, and its removal is a deletion rather
-     than surgery on a hundred-line policy. It dies with the role in Task 4 either way.
+  1. **The bridge — specified here, but APPLIED IN TASK 2** (which already needs a `bootstrap/`
+     apply for the KMS grant, so both ride one). A **new, separately named** `aws_iam_role_policy`
+     — e.g. `state_migration_bridge`. **Not an edit inside `state_access_policy`:** a distinct
+     resource makes the temporary thing visible, and its removal is a deletion rather than surgery
+     on a hundred-line policy. It dies with the role in Task 4 either way.
      **⚠️ READ-ONLY.** `s3:GetObject` on `<org-bucket>/bedrock-serverless-rag/*`, and
      `s3:ListBucket` on the bucket **with the `StringLike s3:prefix` condition copied verbatim
      from `pipeline_state_policy`**. Without that condition it enumerates every project's state
@@ -393,7 +455,7 @@ lands, with no irreversible act waiting on it and no pressure to weaken it to un
      in Task 4. Verification here is `tofu plan -lock=false`.
      *Record in the resource's comment why this is not a privilege increase: it grants read on a
      **copy** of state the role already has full access to in the local bucket. Net new exposure
-     is zero — provided the prefix condition is present.* **Human apply (`bootstrap/`, 1 of 3).**
+     is zero — provided the prefix condition is present.* **Applied in Task 2 (`bootstrap/`, 1 of 3)** — no separate apply here.
   2. **Migrate.** Human, admin SSO: `tofu init -migrate-state`. Repoint
      `environments/ai-lab/backend.tf` to `bucket = "glunk-works-tofu-state-00042"`,
      `key = "bedrock-serverless-rag/terraform.tfstate"`. **The `key` prefix MUST equal the
@@ -437,8 +499,30 @@ lands, with no irreversible act waiting on it and no pressure to weaken it to un
      it standing (a restricted value readable from two places is a wider leak surface than one).
      *(⚠️ Older text here says `vars.AWS_OIDC_ROLE_ARN` / `vars.AWS_PLAN_ROLE_ARN`. That is **dead
      syntax** — `MW`-T6's BR-D21 correction moved every one of this repo's values to `secrets.*`.)*
-     *(⚠️ Older text also says "drop `S1`'s `|| vars.AWS_OIDC_ROLE_ARN` fallback." **There is no
-     fallback and no `tofu-plan` job to drop it from** — this step **creates** the job.)*
+     > **🔴 CORRECTED 2026-08-09 by this plan's own `docs-consistency` pass — the first draft of
+     > this step asserted "there is no fallback and no `tofu-plan` job to drop it from," and
+     > BOTH halves are false. Measured at `deploy.yml:105`:**
+     > ```yaml
+     > role-to-assume: ${{ secrets.AWS_PLAN_ROLE_ARN || secrets.AWS_OIDC_ROLE_ARN }}
+     > ```
+     > **The fallback exists, in the `tofu-plan-main` job** — which is real, shipped, and
+     > triggered by **`push: branches: [main]`**, not by `pull_request`. (The first draft
+     > conflated *"no PR-triggered plan job"* with *"no plan job."*) `S1`-T5 left the `||`
+     > deliberately, and `deploy.yml:100-102` states the intended mechanism: *"the `||` shape
+     > means S2-T2 flips this by creating the secret, with no workflow edit."*
+     >
+     > **⚠️ THAT MECHANISM IS A LIVE BREAK, and this step would trigger it.** `tofu-plan-main`
+     > presents `…:ref:refs/heads/main`, while upstream `plan_roles.tf` trusts **only**
+     > `…:pull_request` under `StringEquals` — **that is exactly F56 gap (a)**. So the instant
+     > `secrets.AWS_PLAN_ROLE_ARN` exists, a push-triggered job silently repoints itself at a
+     > role it cannot assume, and **every merge to `main` fails at credential configuration**,
+     > with no workflow edit anywhere to point at.
+     >
+     > **Therefore: F56 gap (a) must be closed in Task 0a BEFORE this secret is created.** If for
+     > any reason it is not, `tofu-plan-main` must be **pinned to `secrets.AWS_OIDC_ROLE_ARN` in
+     > the same commit that creates the plan secret** — never left on the `||`. Pinning is the
+     > lesser evil and still a **BR-D7 violation in spirit** (a plan job holding apply-capable
+     > credentials); it is not F3, which is specifically about `pull_request` triggers.
 
   2. **Build the PR `tofu-plan` job** (normative spec: `S1`-T4's retained body). It inherits every
      rule already binding this repo, and each has bitten before:
@@ -454,6 +538,18 @@ lands, with no irreversible act waiting on it and no pressure to weaken it to un
        artifact**, never posted as a PR comment — posting back would need `workflow_run` or
        `pull_request_target`, both forbidden, and that remains S1's accepted residual.
      - A guard step asserting the role ARN is non-empty before configuring credentials.
+     - **`tofu plan -lock=false`.** With `use_lockfile = true` and a read-only plan role whose
+       upstream policy has `GetObject`/`ListBucket` but **no `PutObject`**, a plan that takes the
+       lock fails outright. `deploy.yml:111-118` and upstream `plan_roles.tf`'s own comment both
+       already do this — inherit it as the job inherits the other five rules.
+     - **⚠️ IT CANNOT LIVE IN `ci.yml`, AND IT CANNOT LIVE IN `deploy.yml`.** *(Found 2026-08-09
+       by this plan's `docs-consistency` pass.)* `ci.yml`'s header declares it *uncredentialed by
+       construction (`S1b`-T2): no job here holds `id-token: write` or any AWS secret … anything
+       that needs AWS credentials belongs in `deploy.yml`* — and `deploy.yml` has **no
+       `pull_request` trigger at all**, deliberately. **So this job needs a THIRD workflow file**
+       (e.g. `plan.yml`), and `ci.yml`'s header invariant must be amended **in the same PR** to
+       say where credentialed PR-time work now lives. Silently adding a credentialed job to
+       `ci.yml` would falsify that header, which `CLAUDE.md` also states as repo-wide truth.
 
   3. **Verify — the FULL BR-D20 cycle, under the new identity, while the old role still exists.**
      ⚠️ **This replaces the old criterion, which was create-only and in practice a no-op refresh.**
@@ -507,7 +603,8 @@ lands, with no irreversible act waiting on it and no pressure to weaken it to un
 > confirm against CloudTrail.
 
 - **Target Files:** `bootstrap/oidc-setup.tf`, `bootstrap/state-backend.tf`,
-  `.github/workflows/deploy.yml`, `.github/workflows/ci.yml`,
+  `.github/workflows/deploy.yml`, **a new `.github/workflows/plan.yml`**, `.github/workflows/ci.yml`
+  *(header amendment only)*,
   `.github/workflows/ruleset-drift.yml`, `.ai/project.yml`, **the live ruleset**
 - **Acceptance Criteria:** `grep -rn 'iam:CreateRole\|iam:PutRolePolicy' bootstrap/` returns
   nothing. `aws iam get-role --role-name github-actions-deploy-role` returns `NoSuchEntity`. **The
@@ -562,7 +659,7 @@ independently — deleting the directory requires the provider to be out of its 
        **This is what closes F48**, by removal rather than by mitigation.
      - `.ai/project.yml` — drop the `bootstrap` entry from `gates.green` and from `code_paths`,
        **and bump the header date**.
-     - `.github/workflows/ci.yml` — drop `bootstrap`'s two `tofu-validate` steps and its `tflint`
+     - `.github/workflows/ci.yml` — drop `bootstrap`'s `tofu-validate` step and its `tflint`
        and `checkov` references. ✅ **Verified 2026-08-09 that this cannot rename a required check:**
        `tofu-validate` is one job with sequential steps, **not a matrix**, precisely because
        `S1b`-T7 anticipated that trap.
@@ -573,9 +670,17 @@ independently — deleting the directory requires the provider to be out of its 
        *Local: OpenTofu* (⚠️ **that split dissolves entirely — with `bootstrap/` gone only
        `~> 5.0` remains, so `S3`-T7's reconciliation has nothing left to reconcile on that axis**),
        and the `bootstrap/`-facing half of the *Pointers* entry for `global-bootstrap`.
+       ⚠️ **Do not stop at three sections** — `CLAUDE.md` mentions `bootstrap/` **six** times,
+       including inside the § *Commands* block (`# bootstrap/providers.tf sets no profile (F49)`).
+       Grep the file; do not work from this list.
+     - **`.github/CODEOWNERS`** — carries `/bootstrap/ @<owner>`, a rule for a path that will no
+       longer exist. *(Missed by the first draft entirely; found 2026-08-09.)*
+     - `environments/ai-lab/backend.tf`'s comment referencing `bootstrap/state-backend.tf` —
+       rewritten by Task 3 anyway, but confirm it is gone.
 - **Target Files:** `bootstrap/` (deleted), upstream `main.tf`, `.ai/project.yml`,
   `.github/workflows/ci.yml`, `.tflint.hcl`, `CLAUDE.md`
-- **Acceptance Criteria:** `bootstrap/` does not exist. `grep -rn 'bootstrap/' --exclude-dir=.git .`
+- **Acceptance Criteria:** `bootstrap/` does not exist. A **scoped** grep — excluding `.git`,
+  `sprints/`, `.ai/archive/`, `docs/hardening_roadmap.md` and any `.venv` —
   returns only historical references in `sprints/` and the roadmap's finding inventory, which are
   **exempt by name** as historical record. `aws iam list-open-id-connect-providers` still returns
   **exactly one** provider for `token.actions.githubusercontent.com`, and CI still authenticates —
@@ -620,7 +725,7 @@ verification and keep this table accurate as the sprint runs.
 
 | | Residual | Status |
 | --- | --- | --- |
-| **R1** | The **PR-assumable plan role can read `BUDGET_NOTIFICATION_EMAIL`** — via `budgets:ViewBudget` (which returns the subscriber list) **and** independently via `s3:GetObject` on the state, which stores it. **No grant scoping closes both**, and client-side encryption does not either, since the plan role must decrypt state to plan at all. | **ACCEPTED.** ⚠️ **Verify the premise:** if the notification address is the same as the git commit-author email it is already public in every commit of this public repo, the residual is near zero, **and BR-D21's claim that this repo holds exactly one secret is itself wrong and must be corrected.** History holds 3 distinct addresses, one a personal `@gmail.com`. |
+| **R1** | The **PR-assumable plan role can read `BUDGET_NOTIFICATION_EMAIL`** — via `budgets:ViewBudget` (which returns the subscriber list) **and** independently via `s3:GetObject` on the state, which stores it. **No grant scoping closes both**, and client-side encryption does not either, since the plan role must decrypt state to plan at all. | **ACCEPTED.** ⚠️ **Verify the premise:** if the notification address is the same as the git commit-author email it is already public in every commit of this public repo, the residual is near zero, **and BR-D21's claim that this repo holds exactly one secret is itself wrong and must be corrected.** History holds one personal `@gmail.com` among its author/committer addresses. |
 | **R2** | The trust policy tracks a **GitHub-controlled subject shape** that has already changed once without notice, and whose own API field (`use_immutable_subject`) contradicts observed behaviour. | Fail-closed, and strictly preferable to a squattable name-based glob. Detection today is CI failure; **Task 6** would make it a scheduled alarm. |
 | **R3** | `aoss:Create/UpdateAccessPolicy` on `*` would let the workload role **rewrite any collection's data-access policy to name itself** — documented in `state_access_policy`'s own comment. | **MUST be scoped in Task 0c.** This is why "derive the verbs, re-derive the resources" is a hard requirement and not a style note. |
 | **R4** | The **destroy path has been measured exactly once**; everything further down the destroy graph is unmeasured. Under the new role each gap costs an **upstream** PR and a human apply. | Mitigated by Task 4 step 3's full cycle, run **while the old role still exists as a fallback**. |

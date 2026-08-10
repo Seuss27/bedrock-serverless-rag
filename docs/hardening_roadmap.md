@@ -354,7 +354,7 @@ already written into these plans and every `Closes:` line in the inventory.*
 | **MW** | **Make it work** — the first successful `destroy → apply → verify` cycle | **F51**, F39, F5, F46, F55 | **✅ complete** (all six tasks done, 2026-08-08) |
 | **S1a** | **Pipeline hardening — the gate** *(T5 alone; split out 2026-08-08)* | **F13, F14, F20**, the `paths:`/`name:` half of **F18**, **and F16** *(F16 was scoped to S1-T4 and closed here instead — see the row and the note below)* | **✅ done** *(2026-08-08, PR #69 `664ea62`; the gate observed pausing and the apply green on run `31272226259`)* |
 | **S1b** | **Pipeline hardening — the rewrite** *(~~T2 → T1 → T4 → T3 → T6 → T7~~ **T2 → T1 → T3 → T6 → T7** — `T4` deferred to S2 by the 2026-08-08 post-`S1a` reassessment)* | F15, ~~F16,~~ F19, F21, rest of F18; **F59, F60 opened by T3's own `/critic-gate` pass, F61 opened by the same pass and left unassigned** | **✅ complete** *(all five tasks done 2026-08-09; DoD's destroy → apply → verify cycle closed the same day — destroy and apply each proven multiple times under `T7`'s final job-scoped shape plus the sliding-window retry fix (PR #93), and a live `RetrieveAndGenerate` call succeeded against the rebuilt Knowledge Base with no `ClientError`)* |
-| **S2** | Identity, state reconciliation, and `bootstrap/` retirement *(remainder)* | F1–F4, F40, F43, F47 (local half), F48, F56, **F58**, the `permissions_boundary` half of **F57**, BR-D22, **BR-D18**, **BR-D27**. ⚠️ **F42 removed** — ST deletes the offending policy instead of correcting it, so F42 survives org-wide and is not closed here. **F48 closes BY REMOVAL** (the `bootstrap/` directory and its local state file are deleted, not mitigated) | **planned — re-scoped 2026-08-09**, task bodies rewritten to 6 tasks; see the plan's fourth banner |
+| **S2** | Identity, state reconciliation, and `bootstrap/` retirement *(remainder)* | F1–F4, F40, F43, **F47 (local half only)**, F48, **F56 (gaps a AND b)**, **F58 (gap b only — gap (a) is upstream's, `#6`)**, the `permissions_boundary` half of **F57**, BR-D22, **BR-D18**, **BR-D27**. ⚠️ **F42 removed** — ST deletes the offending policy instead of correcting it, so F42 survives org-wide and is not closed here. **F48 closes BY REMOVAL** (the `bootstrap/` directory and its local state file are deleted, not mitigated) | **planned — re-scoped 2026-08-09**, task bodies rewritten to 6 tasks (0-5) plus one optional; see the plan's fourth banner |
 | **S3+S4** | Data-plane and RAG posture *(merged, ~half the tasks)* | F6–F12, F22–F26, F28 | planned |
 | **S5** | Python cleanup *(four items, not a supply-chain programme)* | F29, F31, F32 | planned |
 | **S6** | Documentation and operational readiness *(two runbooks)* | #8, BR-D13, F53 (the README half) | planned |
@@ -403,6 +403,21 @@ sequence point, and the reason it exists is below.
 > migration (hazard 11), the migration given a read-only bridge (hazard 9), and the OIDC handoff
 > merged with the bucket retirement and the deletion of `bootstrap/`. **`S2-T5` → `S2` Task 1**,
 > merged with the `permissions_boundary` threading since both edit the same role.
+>
+> ⚠️ **`S2-T1` and `S2-T6` are the DANGEROUS pair, because the rewrite created a COLLISION, not
+> a gap.** Both ids are still referenced live — in `MW`'s plan, in `S3`'s and `S4`'s dependency
+> blocks, and in this file's own hazards — and both now name a *different* task than they used
+> to. **`S2-T1` = the teardown/rebuild, now `MW`-T1. `S2-T6` = the AOSS data-plane principal, now
+> `MW`-T2. NEITHER refers to the new Task 1 (permissions boundary + F4) or the new optional
+> Task 6 (subject drift check).**
+>
+> ⚠️ **Step numbers did not survive either.** `bootstrap/state-backend.tf`'s own comment and
+> `MW`'s plan both cite *"S2-T2 step 3"* for deleting `state_access_policy`; that is now **Task 4
+> step 4**.
+>
+> ⚠️ **F4's Sprint cell says `S2-T4` and was ALREADY wrong** — F4 was the old Task 5, not Task 4.
+> Routing `S2-T4` generically would send a reader to the encryption/migration tasks. **F4 is the
+> new Task 1.**
 >
 > ⚠️ **One instruction in this inventory is correct about verbs and dangerous about resources,
 > and it appears in F42, F55 and S2's own plan: *"derive the verb list from `MW`'s recorded dry
@@ -549,6 +564,13 @@ Severity ranks; this section schedules. Where they disagree, this section wins (
    `CreateRole` is denied at S2-T2's* verify *step — the exact moment the escalation-capable
    local role still exists and the cheapest unblock is to drop the condition, reverting the
    whole construction.*
+   > **⚠️ Updated 2026-08-09: S2's rewrite SPLITS them, and the mitigation is now different.**
+   > The upstream boundary is **Task 0c** and the module's `permissions_boundary` argument is
+   > **Task 1** — two PRs, with the upstream one landing *first*, which is the direction this
+   > hazard warns against. **What removes the hazard instead is that the upstream boundary is not
+   > in CI's credential path until Task 4**, which runs after Task 1 — so there is no window in
+   > which a live `CreateRole` is denied. Do not collapse Task 0c and Task 1 back together on the
+   > strength of the superseded sentence above; do not let Task 1 slip past Task 4.
 3. **The retry-loop fix (F46) ships with `MW`, not after it.** It was S4-T4, two sprints
    later. Without it the first real cycle runs through a twelve-minute silent retry that
    reports an authorization failure as a propagation delay — turning the sprint whose whole

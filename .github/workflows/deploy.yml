@@ -74,6 +74,13 @@ jobs:
         TF_VAR_data_source_bucket_name: ${{ secrets.DATA_SOURCE_BUCKET_NAME }}
         TF_VAR_budget_notification_email: ${{ secrets.BUDGET_NOTIFICATION_EMAIL }}
         TF_VAR_data_plane_principal_arns: '["${{ secrets.AWS_OIDC_ROLE_ARN }}","${{ secrets.SSO_ADMIN_ROLE_ARN }}"]'
+        # S2-T2 (BR-D22): consumed by environments/ai-lab/encryption.tf's aws_kms key
+        # provider. A REAL `tofu init` -- every init in this file -- evaluates the encryption
+        # block and fails closed without this ("Unable to compute static value"). ci.yml's
+        # tofu-validate does NOT need it: `-backend=false` does not evaluate the block at all
+        # (measured 2026-08-10). secrets.*, not vars.*, for the same measured reason as the
+        # three above.
+        TF_VAR_state_kms_key_arn: ${{ secrets.STATE_KMS_KEY_ARN }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -179,6 +186,9 @@ jobs:
         # silently overwrites live state down to one principal, revoking local data-plane
         # access until the next local apply restores it.
         TF_VAR_data_plane_principal_arns: '["${{ secrets.AWS_OIDC_ROLE_ARN }}","${{ secrets.SSO_ADMIN_ROLE_ARN }}"]'
+        # S2-T2 (BR-D22) -- see tofu-plan-main's env: block for why this is required by every
+        # real init in this file and NOT by ci.yml's tofu-validate.
+        TF_VAR_state_kms_key_arn: ${{ secrets.STATE_KMS_KEY_ARN }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -303,6 +313,9 @@ jobs:
       TF_VAR_data_source_bucket_name: ${{ secrets.DATA_SOURCE_BUCKET_NAME }}
       TF_VAR_budget_notification_email: ${{ secrets.BUDGET_NOTIFICATION_EMAIL }}
       TF_VAR_data_plane_principal_arns: '["${{ secrets.AWS_OIDC_ROLE_ARN }}","${{ secrets.SSO_ADMIN_ROLE_ARN }}"]'
+      # S2-T2 (BR-D22) -- see tofu-plan-main's env: block. This job inits too, so it needs
+      # the key just to READ state: a destroy plan must decrypt state before it can plan one.
+      TF_VAR_state_kms_key_arn: ${{ secrets.STATE_KMS_KEY_ARN }}
     steps:
       # T1: destroy-ai-lab's checkout was the one carried byte-identical by T2 (its own
       # planning decision 2) and deliberately left for T1 to close -- this is that close.
@@ -351,3 +364,13 @@ jobs:
       # -auto-approve path (F13, fixed by S1a-T5, out of scope for this job).
       - name: OpenTofu Destroy
         run: tofu apply -auto-approve -input=false tfplan
+
+      # S2-T2: this job wrote a plan file above and, unlike tofu-plan-main and tofu-apply,
+      # had no cleanup step -- and its plan file is the BR-D4-densest of the three (a full
+      # 12-resource destroy render). Exposure was nil in practice (no upload-artifact
+      # anywhere in this repo, ephemeral runner), but encryption.tf's header cites "explicit
+      # rm in an `if: always()` step" as part of what bounds the unencrypted-plan-file
+      # residual, and that bound must actually exist in every job it covers.
+      - name: Clean up plan files
+        if: always()
+        run: rm -f tfplan plan.json

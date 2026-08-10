@@ -395,6 +395,72 @@ lands, with no irreversible act waiting on it and no pressure to weaken it to un
 ### Task 2 — Adopt native state encryption, IN PLACE, before anything moves
 **(BR-D22)**
 
+> ## BANNER — 2026-08-10: the body below is executable; its step 1 has been REWRITTEN.
+>
+> The task body's approach is unchanged and correct. **Step 1 of the second bullet was
+> rewritten in place** — it asserted "this repo has zero `kms:` grants anywhere today", which
+> PR #106 made false, and this banner previously certified the body as correct without
+> noticing. Per CLAUDE.md's convention the body is rewritten to agree with the banner rather
+> than left to be overridden by it. This banner adds the measured behaviour the body does not
+> mention, plus the state of the half that already shipped.
+>
+> **THE GAP: `deploy.yml` needs a new secret, or all three of its jobs fail on the merge that
+> adds the encryption block.** `tofu-plan-main`, `tofu-apply` and `destroy-ai-lab` each run a
+> **real** `tofu init`, which evaluates the encryption block and therefore resolves
+> `var.state_kms_key_arn`. Unset, init fails with `Unable to compute static value` /
+> `encryption.key_provider.aws_kms.state depends on var.state_kms_key_arn`. Each job needs
+> `TF_VAR_state_kms_key_arn` in its `env:` block, from a **`secrets.*`** value — a `vars.*` one
+> is dumped into every step's log preamble (BR-D21's measured GitHub Actions exception, same
+> reason the three existing `TF_VAR_`s there ride `secrets.*`). **The secret must exist before
+> the PR merges.**
+>
+> **`ci.yml`'s `tofu-validate` is NOT affected — measured, because the opposite was plausible
+> enough to be reported as a blocker and then withdrawn the same day.** `tofu validate` runs
+> `tofu init -backend=false`, and **`-backend=false` does not evaluate the encryption block at
+> all**: no KMS call, no credentials, and the variable need not be set. Measured on a clean
+> checkout (2026-08-10):
+>
+> | encryption block | variable | credentials | backend | result |
+> |---|---|---|---|---|
+> | no | — | none | `-backend=false` | pass |
+> | yes | set | none | `-backend=false` | pass |
+> | yes | **unset** | none | `-backend=false` | pass |
+> | yes | unset | admin SSO | real | **fails — needs the variable** |
+>
+> So the required check stays green, on fork PRs too, and **nothing here justifies putting AWS
+> credentials into `ci.yml`** — that would put a credentialed job back on `pull_request`, which
+> is F3's exploitable instance, closed by S1b-T2. Any future reasoning that arrives there has
+> gone wrong.
+>
+> **⚠️ DO NOT MEASURE THIS LOCALLY IN AN ALREADY-INITIALIZED DIRECTORY — it reports a false
+> blocker.** `environments/ai-lab/.terraform` on a workstation names the S3 backend, so
+> `init -backend=false` reaches for the backend and dies on
+> `No valid credential sources found` **whether or not an encryption block exists** — which
+> reads exactly like "the encryption block requires credentials". `CLAUDE.md` documents this
+> wrinkle and says `-reconfigure` fixes it; **it does not** (measured 2026-08-10 — the flag
+> does not clear the recorded backend). Test from a clean copy, or move `.terraform` aside
+> first. CI is unaffected because it checks out clean.
+>
+> **⚠️ WHAT IS ALREADY DONE AND IS *NOT* REVERTED — Task 2 is half-executed.**
+> - The `bootstrap/` human apply **landed** (PR #106 merged as `02fd1f8`, applied under admin
+>   SSO 2026-08-10). `StateEncryptionKeyAccess` and `StateMigrationBridge` are **live on the
+>   local `github-actions-deploy-role`** — verified by `aws iam list-role-policies` and
+>   `tofu state list`. Do **not** re-apply or revert them: Task 3's bridge half is needed
+>   regardless of how the encryption half is re-scoped. The consequence to carry forward is
+>   that `bootstrap/state-migration.tf`'s two recorded residuals are live for **longer than the
+>   Task 2 → Task 4 window they were scoped against**.
+> - `s3://personal-bedrock-lab-state/environments/ai-lab/terraform.tfstate` was **deleted**
+>   (delete marker `54D0hIt0…`, versioning Enabled so the prior version survives). It held
+>   **zero resources** — a 373-byte empty skeleton — so nothing was lost, and it need not be
+>   restored. **This is what lets the block ship with no `fallback`:** OpenTofu refuses to read
+>   plaintext state once an encryption block exists, so the usual adoption path is a `fallback`
+>   to an `unencrypted` method, applied once, then stripped in a second PR. With no state
+>   object at all there is nothing to read, so the first apply writes ciphertext from scratch —
+>   BR-D20's "prefer rebuilding correctly over migrating carefully" applied to the one artifact
+>   that is normally the exception. **The consequence to know before debugging a future init
+>   failure: no configuration in this root will read a plaintext state object.** If one appears,
+>   it is new — the question is where it came from, not what fallback to add.
+
 - **⚠️ This must precede the migration, and the reason is permanent.** The org bucket has
   **versioning Enabled**. Migrating first and encrypting second — the old Task 4's step order —
   writes a **plaintext state version into the org bucket that persists forever**. Encrypting
@@ -405,8 +471,16 @@ lands, with no irreversible act waiting on it and no pressure to weaken it to un
   `docs-consistency` pass, which found the encryption task had no key and no grant behind it.)*
   1. **`kms:Decrypt` / `GenerateDataKey` / `DescribeKey`** on the key Task 0c step 1b created
      upstream. **Without this the encryption block breaks `tofu-plan-main` on the very next
-     merge** — `tofu init` must decrypt state to plan, and this repo has **zero `kms:` grants
-     anywhere** today. This is not optional and it must land *before* the encryption block does.
+     merge** — every real `tofu init` evaluates the encryption block and calls KMS.
+     ~~and this repo has **zero `kms:` grants anywhere** today~~ **✅ DONE 2026-08-10, and the
+     struck clause is now false:** PR #106 (`02fd1f8`) merged and was human-applied, so
+     `StateEncryptionKeyAccess` is live on `github-actions-deploy-role`. This half of the task
+     is spent — do not re-apply it. *(Corrected after a `docs-consistency` pass caught this
+     body still asserting the pre-#106 state underneath a banner certifying the body as
+     correct — the precise rot CLAUDE.md retired "the banner wins" over.)*
+     ⚠️ Note the mechanism is **write**, not read, for the immediate case: the state object was
+     deleted, so the next apply has nothing to decrypt and needs `GenerateDataKey` to write
+     ciphertext from scratch. Both verbs are granted; only the reasoning changes.
   2. **The read-only org-bucket bridge policy Task 3 needs** — created here rather than in Task 3
      so both grants ride one apply. It sits unused for one task, which costs nothing: it is
      read-only, scoped to this project's own prefix, and grants access to a *copy* of state the

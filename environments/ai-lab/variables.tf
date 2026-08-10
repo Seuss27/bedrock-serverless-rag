@@ -28,6 +28,12 @@ variable "data_plane_principal_arns" {
   }
 }
 
+variable "permissions_boundary_name" {
+  type        = string
+  description = "Name of the IAM permissions-boundary policy at path /bedrock-rag/, created upstream in glunk-works/global-bootstrap (S2-T0c)."
+  default     = "bedrock-rag-workload-boundary"
+}
+
 variable "budget_limit_usd" {
   type        = string
   description = "Monthly cost guardrail for the ai-lab environment, in USD."

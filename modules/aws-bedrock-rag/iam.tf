@@ -1,3 +1,14 @@
+terraform {
+  required_version = ">= 1.10.0"
+
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}
+
 # 1. The S3 Ingestion Bucket
 # This is the physical bucket where you will upload your RAG source PDFs.
 resource "aws_s3_bucket" "bedrock_source" {
@@ -29,7 +40,12 @@ resource "aws_iam_role" "bedrock_kb_role" {
   #
   # Changing `path` forces replacement. That is free today (BR-D20: the corpus is empty) and
   # is why this lands BEFORE MW rebuilds -- after MW it would cost a second replacement.
-  path = "/bedrock-rag/"
+  path = "/${local.bedrock_rag_path}/"
+
+  # Boundary policy is created upstream in glunk-works/global-bootstrap (S2-T0c) and referenced
+  # here by name only -- the ARN is built from data.aws_caller_identity.current.account_id, never
+  # a committed literal or a variable default carrying an account id (BR-D4).
+  permissions_boundary = local.permissions_boundary_arn
 
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -43,6 +59,14 @@ resource "aws_iam_role" "bedrock_kb_role" {
         Condition = {
           StringEquals = {
             "aws:SourceAccount" = data.aws_caller_identity.current.account_id
+          }
+          # The KB's own ARN isn't knowable before the KB exists -- referencing
+          # aws_bedrockagent_knowledge_base.rag_kb.arn here is a dependency cycle. Match the
+          # pattern instead. Residual: this does not by itself prevent a second knowledge base
+          # in this account from also being able to assume this role -- only that no resource
+          # outside knowledge-base/* or outside this account can.
+          ArnLike = {
+            "aws:SourceArn" = "arn:aws:bedrock:${var.aws_region}:${data.aws_caller_identity.current.account_id}:knowledge-base/*"
           }
         }
       }
@@ -136,3 +160,12 @@ resource "aws_opensearchserverless_access_policy" "data_access_policy" {
 
 # Helper data block to fetch your active AWS account context dynamically
 data "aws_caller_identity" "current" {}
+
+locals {
+  # Single source for the path segment every role this module creates lives under, and that
+  # the upstream boundary policy also lives under -- CLAUDE.md's "never hardcode a resource
+  # name a sibling resource also references as a string" rule, applied to a path shared with
+  # an upstream repo instead of a sibling resource in this one.
+  bedrock_rag_path         = "bedrock-rag"
+  permissions_boundary_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/${local.bedrock_rag_path}/${var.permissions_boundary_name}"
+}

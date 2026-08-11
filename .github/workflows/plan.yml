@@ -1,0 +1,120 @@
+name: Plan
+
+# S2-T4 PR A: the deferred PR-time plan job (originally S1-T4, folded into S2's own Task 2
+# per that sprint's arrival banner). It cannot live in ci.yml, which is uncredentialed by
+# construction (S1b-T2: "no job here holds id-token: write or any AWS secret"), and it cannot
+# live in deploy.yml, which deliberately has no pull_request trigger at all. So it is its own
+# third workflow file.
+#
+# This is the first credentialed pull_request job in this repo since S1b-T2 deleted
+# deploy-ai-lab.yml to close F3's exploitable instance -- and it does NOT reopen that
+# instance: it authenticates as secrets.AWS_PLAN_ROLE_ARN only, the read-only role
+# glunk-works/global-bootstrap#11/#12 minted specifically for this (no create/write verbs,
+# confirmed live: `aws iam get-policy-version` on glunk-works-bedrock-serverless-rag-plan-readonly
+# has GetObject/ListBucket but no PutObject, and kms:Decrypt/DescribeKey/GenerateDataKey but
+# no kms:Encrypt). Never fall back to secrets.AWS_OIDC_ROLE_ARN here -- that is the
+# apply-capable role, and pointing a pull_request job at it would be F3 reopened in the task
+# that closes it.
+#
+# R5 (accepted residual, sprint_plan.md Task 4 step 5): GitHub withholds repository secrets
+# from a workflow triggered by a fork's pull_request. On a fork PR, secrets.AWS_PLAN_ROLE_ARN
+# is empty, the guard step below fails loudly, and this required check goes red -- so no fork
+# PR can ever merge. Accepted rather than worked around: this repo's only contributor is its
+# own org, and failing loudly beats silently skipping a required check.
+on:
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  tofu-plan:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    defaults:
+      run:
+        working-directory: environments/ai-lab
+    env:
+      # BR-D4 EXCEPTION, recorded in CLAUDE.md's BR-D4 section: these ride secrets.*, not
+      # vars.*, even though none is secret by BR-D4's own definition -- GitHub Actions dumps
+      # every vars.* value used anywhere in a job into the step preamble it prints for every
+      # step, uses: steps included; only secrets.* is masked. Same reasoning as deploy.yml's
+      # tofu-plan-main.
+      TF_VAR_data_source_bucket_name: ${{ secrets.DATA_SOURCE_BUCKET_NAME }}
+      TF_VAR_budget_notification_email: ${{ secrets.BUDGET_NOTIFICATION_EMAIL }}
+      TF_VAR_data_plane_principal_arns: '["${{ secrets.AWS_OIDC_ROLE_ARN }}","${{ secrets.SSO_ADMIN_ROLE_ARN }}"]'
+      # S2-T2 (BR-D22): environments/ai-lab/encryption.tf's aws_kms key provider needs this
+      # for every REAL init -- `-backend=false` (ci.yml's tofu-validate) does not evaluate the
+      # block, but this job runs a real init against the S3 backend.
+      TF_VAR_state_kms_key_arn: ${{ secrets.STATE_KMS_KEY_ARN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # Fails loudly rather than letting configure-aws-credentials produce a confusing
+      # "could not assume role" error -- the empty-ARN case is expected on a fork PR (R5
+      # above) and this makes that failure mode legible instead of looking like a broken role.
+      - name: "Guard: plan role ARN must be non-empty"
+        env:
+          PLAN_ARN: ${{ secrets.AWS_PLAN_ROLE_ARN }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$PLAN_ARN" ]]; then
+            echo "::error::AWS_PLAN_ROLE_ARN is empty -- expected on a fork PR (secrets are withheld), fails closed rather than proceeding without credentials"
+            exit 1
+          fi
+
+      # F-4 defense-in-depth -- see the identical step in deploy.yml's jobs. Derived from the
+      # SAME expression passed to role-to-assume below, never hardcoded.
+      - name: Register bare account id for log masking
+        env:
+          PLAN_ARN: ${{ secrets.AWS_PLAN_ROLE_ARN }}
+        run: |
+          set -euo pipefail
+          account_id="$(echo "$PLAN_ARN" | cut -d: -f5)"
+          if [[ ! "$account_id" =~ ^[0-9]{12}$ ]]; then
+            echo "::error::AWS_PLAN_ROLE_ARN did not yield a 12-digit account id -- account-id masking is NOT active"
+            exit 1
+          fi
+          echo "::add-mask::$account_id"
+
+      - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+
+      - uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          role-to-assume: ${{ secrets.AWS_PLAN_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: OpenTofu Init
+        run: tofu init
+
+      # -lock=false: this role has no s3:PutObject (read-only by design), and a PR-time plan
+      # must never contend with a concurrent apply's lock anyway.
+      # -out= additionally SAVES the plan -- it does not suppress the human-readable render,
+      # which is why stdout is redirected away entirely; the summary step below reads the
+      # saved file instead.
+      - name: OpenTofu Plan
+        run: tofu plan -no-color -lock=false -input=false -out=tfplan > /dev/null
+
+      # F16/BR-D4: summarize, never dump. Resource actions and addresses only.
+      - name: Summarize plan
+        run: |
+          set -euo pipefail
+          tofu show -json tfplan > plan.json
+          jq -r '(.resource_changes // [])[]
+                 | select(.change.actions != ["no-op"])
+                 | "\(.change.actions | join(",")) \(.address)"' plan.json \
+            | sort | tee -a "$GITHUB_STEP_SUMMARY"
+          jq -r '[(.resource_changes // [])[] | select(.change.actions != ["no-op"])] | length
+                 | "total changes: \(.)"' plan.json >> "$GITHUB_STEP_SUMMARY"
+
+      # No artifact upload anywhere in this job -- a plan file on a public repo's artifact
+      # store is world-readable and contains everything the summary above was written to
+      # omit. Deleting the files is belt-and-suspenders on an ephemeral runner.
+      - name: Clean up plan files
+        if: always()
+        run: rm -f tfplan plan.json

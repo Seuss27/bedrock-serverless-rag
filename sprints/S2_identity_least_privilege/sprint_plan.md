@@ -629,10 +629,21 @@ lands, with no irreversible act waiting on it and no pressure to weaken it to un
      ⚠️ **This replaces the old criterion, which was create-only and in practice a no-op refresh.**
      With the lab already up from Task 2 and state migrated in Task 3, a merge-apply would report
      `No changes.` and prove only that the new role can *read*.
+
+     > **⚠️ CORRECTED 2026-08-11 by `S2`-T4 PR A — the sub-order below assumed the lab was
+     > already up.** It is not: `destroy-ai-lab` (dispatch `31337481993`) tore all 12 resources
+     > down 2026-08-09, and no apply has succeeded since. The original order put a
+     > `destroy-ai-lab` dispatch **second**, before anything had been built on the new identity
+     > — against an empty lab, that step is a `No changes.` no-op and proves nothing about the
+     > destroy verbs. **The body below is rewritten to match; this banner is the record of why.**
+
      1. A PR plan job green on the **plan** role → exercises F56 gap b's new workload-read policy.
-     2. Dispatch `destroy-ai-lab` on the **apply** role → **exercises the destroy verbs.**
-     3. Merge → `tofu-apply` plans `12 to add` and succeeds → **exercises the create verbs.**
-     4. Dispatch `destroy-ai-lab` again → lab down for the rest of the sprint.
+     2. Merge → `tofu-apply` plans `12 to add` and succeeds, on the **apply** role → **exercises
+        the create verbs**, against a real empty-to-populated lab rather than a no-op.
+     3. Dispatch `destroy-ai-lab` on the **apply** role → **exercises the destroy verbs** —
+        now against a lab that actually holds the 12 resources step 2 just created.
+     4. Lab down for the rest of the sprint — no further dispatch needed; (3) already leaves it
+        there.
 
      Each `AccessDenied` in (2) or (3) is fixed upstream **with a working fallback still in
      place**. Budget for one or two iterations: the destroy path has been exercised exactly once

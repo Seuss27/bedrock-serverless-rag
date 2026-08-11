@@ -7,67 +7,64 @@ Regenerate this at the end of every working session.
 ## Now
 
 **`implementing` — `S2` (Identity, state reconciliation, and `bootstrap/` retirement).**
-Task 1 merged. **Task 2 is complete on both halves**: the `bootstrap/` grant merged as
-PR #106 and was human-applied 2026-08-10; the encryption block is shipped as **PR #109**,
-open, awaiting review and merge.
+Tasks 1 and 2 are **done and verified live**. **Task 3 is next**, and it opens with a human
+admin-SSO step, not a code edit.
 
 ## Just done
 
-**S2 Task 2's encryption half**, 2026-08-10, as **PR #109**
-(`sprint/s2-t2-state-encryption`, commit `5d808ec`):
+**S2 Task 2 complete on both halves and verified**, 2026-08-10:
 
-- `environments/ai-lab/encryption.tf` (new) — `aws_kms` key provider against the upstream
-  org state key, `aes_gcm` method, **`enforced = true`**. **No `fallback`**: the state
-  object was an empty 373-byte skeleton tracking **zero** resources (verified before
-  deleting) and was deleted, so the first apply writes ciphertext from scratch (BR-D20).
-- `deploy.yml` — `TF_VAR_state_kms_key_arn` from `secrets.STATE_KMS_KEY_ARN` on all three
-  credentialed jobs; also adds the `Clean up plan files` step `destroy-ai-lab` lacked.
-- **A blocker was reported and withdrawn the same day.** I measured that
-  `tofu init -backend=false` needed AWS credentials and concluded `ci.yml`'s uncredentialed
-  `tofu-validate` required check would break. Confounded by an already-initialized local
-  `.terraform` — and **CLAUDE.md's claim that `-reconfigure` fixes that is false**, which is
-  corrected in PR #109. Re-measured clean: `-backend=false` never evaluates the encryption
-  block. **Do not re-derive this locally without moving `.terraform` aside first.**
-- **Critic gate: 3 rounds, converged at the cap** (`docs-consistency` + `security-critic`).
-  14 findings, 12 fixed, 1 deferred, 1 cleared. `enforced = true` came from that pass.
+- `bootstrap/` KMS grant + org-bucket bridge — PR #106, merged and human-applied.
+- Native state encryption — PR #109, merged as `51ef17b`; CI run `31443695508` green
+  (`tofu-plan-main` + `tofu-apply`).
+- **Acceptance criterion PASSED, with stronger evidence than it asked for.** The state
+  object (21,360 B) contains `"encrypted_data"` and `"encryption_version"` and does **not**
+  contain `"resources"`, `"outputs"` or `"terraform_version"`; `serial`/`lineage`/`meta`
+  stay clear by design. `tofu state list` reads all **12** resources back through the KMS
+  key, so `enforced = true` locks nobody out.
+  ⚠️ **Refine the criterion before re-running it after Task 3's migration.** *"Does not parse
+  as JSON"* is imprecise — the encrypted envelope **is** `{`-prefixed and JSON-shaped, so a
+  bare `jq empty` can pass or fail for the wrong reason. The decisive test is the key
+  presence/absence above. Worth folding into `sprint_plan.md`.
+- **A blocker was reported and withdrawn the same day.** `tofu init -backend=false` does
+  **not** evaluate an encryption block; the confound was an already-initialized local
+  `.terraform`, whose documented `-reconfigure` remedy does not work. Both corrected in #109.
+  **Do not re-derive this locally without moving `.terraform` aside first.**
+- Critic gate: **3 rounds, converged at the cap** (`docs-consistency` + `security-critic`).
+  `enforced = true` came out of that pass.
 
 ## Next
 
-**PR #109 needs review and merge:** https://github.com/glunk-works/bedrock-serverless-rag/pull/109
+**S2 Task 3** — bridge, then migrate. Re-derive its line range with
+`grep -n '^### Task' sprints/S2_identity_least_privilege/sprint_plan.md` rather than
+trusting a number written here.
 
-**Then two human actions, and the second is easy to get backwards:**
+⚠️ **Ordering hazard — the human step comes FIRST.** Repointing `backend.tf` and merging it
+would leave CI initialising against a bucket the state is not in yet. The migration is a
+**human, local, admin-SSO** operation (`tofu init -migrate-state`), done *before* the change
+merges. The `key` prefix must equal the `var.projects` map key **byte for byte**, or the
+role's `s3:prefix` condition denies access and the failure reads as a credentials error
+rather than a naming one.
 
-1. Merge the PR.
-2. **APPROVE** the resulting `tofu-apply`. Every recent push-to-`main` apply was correctly
-   **declined** because it predated the encryption block — **this one is the opposite.**
-   It is one of only two rebuilds S2 accepts, and it writes the first encrypted state.
-3. Verify Task 2's acceptance criterion: the state object must **not parse as JSON**. That
-   is the only check that distinguishes native encryption from SSE.
+**Task 3 needs no `bootstrap/` apply** — its read-only bridge policy is already live, having
+ridden Task 2's. And its `No changes.` criterion is meaningful only because **the lab is UP**
+(12 resources); against an empty state it would pass vacuously.
 
-**Then S2 Task 3** (`sprint_plan.md` lines 507–555): repoint `environments/ai-lab/backend.tf`
-at the org bucket, `key = "bedrock-serverless-rag/terraform.tfstate"` — the prefix **must**
-equal the `var.projects` map key byte for byte, or the role's `s3:prefix` condition denies
-access and the failure reads as a credentials error, not a naming one — then
-`tofu init -migrate-state` by hand under admin SSO. **Task 3 needs no `bootstrap/` apply of
-its own:** its read-only bridge policy is already live, having ridden Task 2's.
-
-**Model: `sonnet` / coder.**
+**Model: `sonnet` / coder** for the code half; the migration itself is a human action.
 
 ## Open gates and blockers
 
-**HITL Gate: OPEN.** PR #109 needs human review + merge, then the **approve** (not decline)
-of its `tofu-apply`, then the not-JSON verification. Task 3's migration is a separate manual
-admin-SSO operation, never a CI action.
+**HITL Gate: OPEN.** Task 3 begins with the manual admin-SSO state migration above. Do not
+start the `backend.tf` edit unattended — doing the code first inverts the safe order.
 
 **Not filed, deliberately** (`security-critic` #1, LOW): no required check can *see* the
 encryption block, so deleting `encryption.tf` or its `enforced = true` line passes all six
 checks green and the next apply writes plaintext. `enforced` closes the realistic accident
-but is not self-defending. Sketched fix and the reasons for deferring are in
-`.ai/state.json`'s `known_followups`.
+but is not self-defending. Sketched fix and deferral reasons are in `.ai/state.json`'s
+`known_followups`.
 
 ## Pointers
 
 - `docs/hardening_roadmap.md` — reference of record and threat model. Unchanged this session.
-- `sprints/S2_identity_least_privilege/sprint_plan.md` — Task 1 (done, 360–394); **Task 2
-  (395–506)**, carrying a dated banner with the measured `-backend=false` matrix; **Task 3
-  (507–555)**, next up.
+- `sprints/S2_identity_least_privilege/sprint_plan.md` — Task 2 carries a dated banner with
+  the measured `-backend=false` matrix; Task 3 is next.

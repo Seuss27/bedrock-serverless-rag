@@ -419,6 +419,15 @@ sequence point, and the reason it exists is below.
 > Routing `S2-T4` generically would send a reader to the encryption/migration tasks. **F4 is the
 > new Task 1.**
 >
+> **✅ F1, F2 and F3's cells were touched 2026-08-11 by `S2`-T4 PR A** (for the reason the F20
+> note above sanctions: the role deletion they describe needed a correct sprint pointer, not a
+> mangled one) **and now name the NEW numbering directly — `S2-T4` meaning literally `S2` Task
+> 4, no translation needed.** Do not run the `S2-T2` → `S2` Task 4 mapping above against these
+> three; it does not apply to them anymore. **F4's `S2-T4` above is still the OLD-numbering
+> collision this key exists to warn about** — the two cells now read identically while meaning
+> different things, which is exactly the trap this whole note is for. If in doubt for any given
+> cell, check whether it has its own dated correction nearby (F1/F2/F3 do; F4 does not).
+>
 > ⚠️ **One instruction in this inventory is correct about verbs and dangerous about resources,
 > and it appears in F42, F55 and S2's own plan: *"derive the verb list from `MW`'s recorded dry
 > run."*** That harvest lives in `bootstrap/state-backend.tf`, whose main statement ends

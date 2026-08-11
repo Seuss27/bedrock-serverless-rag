@@ -67,7 +67,10 @@ Three OpenTofu roots, and the distinction matters for every change:
 > in a single clean pass (run `31274829358`). `tofu-plan-main` now succeeds in CI on every
 > push to `main`, so the missing-variable gap is gone too and **CI plan output is as
 > trustworthy as a local one**. `state_access_policy` still holds `MW`-T5's widened verb set
-> (F55, closed 2026-08-07) until `S2`-T2 deletes the whole resource.
+> (F55, closed 2026-08-07) until ~~`S2`-T2~~ **`S2`-T4 step 4** deletes the whole resource.
+> *(Sprint corrected 2026-08-11 by `S2`-T4 PR A — `S2`-T2 is native state encryption; the role
+> and policy deletion is Task 4 step 4, same fix as the § GitHub Actions security paragraph
+> below and the roadmap's F1/F2 rows.)*
 > **What replaces it as the harder half:** a *working* pipeline is not a *least-privileged*
 > one. The role CI applies with is still F1's escalation-capable role, and until `S2` retires
 > it the `production` Environment approval is the only control in front of it.
@@ -203,7 +206,9 @@ if no gate existed on a repo that has one.
   > **Two corrections, 2026-08-07, and the second one is the trap.** *(a)* The subject was
   > `repo:<owner>/<repo>:*` until ST-T3 narrowed it; it is now a **single** subject rather than
   > a glob over owners — **and the conclusion above is completely unchanged**, because the
-  > trailing `:*` is the part that admits `:pull_request` (**F2**, still open, closed in S2-T2).
+  > trailing `:*` is the part that admits `:pull_request` (**F2**, still open, closed in
+  > ~~S2-T2~~ **`S2`-T4 step 4** — corrected 2026-08-11, same error and same fix as this
+  > section's own paragraph above).
   > *(b)* **An org-owned repo presents an ID-QUALIFIED subject** —
   > `repo:<owner>@<org_id>/<repo>@<repo_id>:<context>` — which a plain
   > `repo:<owner>/<repo>:*` glob **does not match**. That is what broke CI authentication at

@@ -168,7 +168,7 @@ if no gate existed on a repo that has one.
   the one step named above (`tflint`'s plugin install). "Safe on a fork PR" is true again,
   file-wide, and this time by removing a secret dependency rather than by accepting one.)*
   (credentialed, triggers are `push: branches: [main]` + `workflow_dispatch` only, **no
-  `pull_request` trigger at all**). This repo now has **zero credentialed `pull_request`
+  `pull_request` trigger at all**). ~~This repo now has **zero credentialed `pull_request`
   jobs**, for the first time in its history. **But nothing at the IAM layer moved**: the trust
   policy's trailing `:*` still admits `:pull_request` (**F2**, still open, `S2`-T2), and no
   separate plan-only role exists yet (**F56**, still `S2`-T0) — so `docs/hardening_roadmap.md`
@@ -178,7 +178,28 @@ if no gate existed on a repo that has one.
   per that sprint's arrival banner) is the next thing that puts a job back on `pull_request`,
   and it must use the read-only plan role `S2`-T0 mints, never `secrets.AWS_OIDC_ROLE_ARN`, or
   **F3** — not F13, which S1a-T5 already closed and cannot "return" — reopens at the code layer
-  in the sprint meant to retire it.
+  in the sprint meant to retire it.~~
+  **✅ CORRECTED 2026-08-11 by `S2`-T4 PR A — the zero-credentialed-`pull_request`-jobs era is
+  OVER, and here is exactly what changed and what did not.** *(Two smaller errors in the struck
+  text while here: the deferred job was always `S2`'s own **Task 4**, never "Task 2" — Task 2 is
+  native state encryption, BR-D22; and its Sprint cell should read `S2-T4`, not `S2-T2`.)*
+  `.github/workflows/plan.yml` now runs a credentialed `pull_request` job — job id `tofu-plan`,
+  authenticating as `secrets.AWS_PLAN_ROLE_ARN`, the read-only plan role
+  `glunk-works/global-bootstrap#11`/`#12` minted for exactly this (confirmed live:
+  `kms:Decrypt`/`DescribeKey`/`GenerateDataKey` but no `kms:Encrypt`; `s3:GetObject`/`ListBucket`
+  but no `PutObject`). **This is the rule above holding, not breaking it** — `F3` stays closed
+  at the code layer because this job never touches the escalation-capable role.
+  **What has NOT moved, and is a live residual until `S2`-T4 step 4's human apply:**
+  `bootstrap/oidc-setup.tf`'s `github-actions-deploy-role` (the **F1** escalation-capable role)
+  still exists in AWS, and its trust policy's trailing `:*` still admits `:pull_request`
+  (**F2**, still open — read the live condition, not this sentence, before relying on it). No
+  secret in this repo points at that role's ARN anymore (`secrets.AWS_OIDC_ROLE_ARN` was
+  repointed to the new least-privilege apply role in the same change that created
+  `AWS_PLAN_ROLE_ARN`) — but the role's ARN is not itself a secret, and a PR branch could
+  hardcode it directly into a workflow file's `role-to-assume:` and, because F2 is still open,
+  successfully assume it. **This window closes only when `S2`-T4 step 4 deletes that role, not
+  before.** Until then, treat any credentialed `pull_request` job in this repo — `plan.yml`
+  included — as sitting beside a live escalation path it does not itself use.
   > **Two corrections, 2026-08-07, and the second one is the trap.** *(a)* The subject was
   > `repo:<owner>/<repo>:*` until ST-T3 narrowed it; it is now a **single** subject rather than
   > a glob over owners — **and the conclusion above is completely unchanged**, because the

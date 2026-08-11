@@ -1,13 +1,12 @@
 name: Plan
 
-# S2-T4 PR A: the deferred PR-time plan job (originally S1-T4, folded into S2's own Task 2
-# per that sprint's arrival banner). It cannot live in ci.yml, which is uncredentialed by
-# construction (S1b-T2: "no job here holds id-token: write or any AWS secret"), and it cannot
-# live in deploy.yml, which deliberately has no pull_request trigger at all. So it is its own
-# third workflow file.
+# S2-T4 PR A: the deferred PR-time plan job (originally S1-T4, folded into S2's own Task 4).
+# It cannot live in ci.yml, which is uncredentialed by construction (S1b-T2: "no job here
+# holds id-token: write or any AWS secret"), and it cannot live in deploy.yml, which
+# deliberately has no pull_request trigger at all. So it is its own third workflow file.
 #
 # This is the first credentialed pull_request job in this repo since S1b-T2 deleted
-# deploy-ai-lab.yml to close F3's exploitable instance -- and it does NOT reopen that
+# deploy-ai-lab.yml to close F3's exploitable INSTANCE -- and it does not reopen that
 # instance: it authenticates as secrets.AWS_PLAN_ROLE_ARN only, the read-only role
 # glunk-works/global-bootstrap#11/#12 minted specifically for this (no create/write verbs,
 # confirmed live: `aws iam get-policy-version` on glunk-works-bedrock-serverless-rag-plan-readonly
@@ -16,17 +15,45 @@ name: Plan
 # apply-capable role, and pointing a pull_request job at it would be F3 reopened in the task
 # that closes it.
 #
+# ⚠️ F2 IS STILL OPEN, AND THAT IS THIS FILE'S REAL RESIDUAL -- read this before assuming the
+# read-only role is the whole story. A pull_request job runs the workflow FROM THE PR BRANCH
+# (CLAUDE.md's first GitHub Actions rule), and bootstrap/oidc-setup.tf's escalation-capable
+# github-actions-deploy-role (F1) still exists in AWS with a trust policy whose trailing `:*`
+# still admits `:pull_request`. No secret in this repo names that role's ARN -- but the ARN
+# itself is not a secret, so a PR branch could hardcode it into role-to-assume: directly,
+# bypassing this file's own AWS_PLAN_ROLE_ARN wiring entirely. This window closes only when
+# S2-T4 step 4 deletes that role (human apply), not by anything in this file. Until then,
+# treat this job as sitting beside a live escalation path it does not itself use -- the same
+# residual CLAUDE.md's GitHub Actions section and docs/hardening_roadmap.md's F3 row now both
+# record.
+#
+# Same reachability note applies to state confidentiality: this job's plan role legitimately
+# holds kms:Decrypt on the state key (environments/ai-lab/encryption.tf's own header already
+# anticipates this -- "after S2 Task 0c that set includes a plan role assumable from any pull
+# request"). Client-side state encryption defends a bucket-only reader with no KMS access; it
+# was never meant to, and cannot, keep decrypted state out of a job that legitimately needs to
+# read it to plan. The blast radius of a compromised PR branch is bounded by what this job's
+# role can read (full state, no write) for the duration of one job run, not more.
+#
 # R5 (accepted residual, sprint_plan.md Task 4 step 5): GitHub withholds repository secrets
 # from a workflow triggered by a fork's pull_request. On a fork PR, secrets.AWS_PLAN_ROLE_ARN
-# is empty, the guard step below fails loudly, and this required check goes red -- so no fork
-# PR can ever merge. Accepted rather than worked around: this repo's only contributor is its
-# own org, and failing loudly beats silently skipping a required check.
+# is empty, the guard step below fails loudly. Today that means a red, non-required check; once
+# sprint_plan.md Task 4 step 5 adds tofu-plan to the required list, it means no fork PR can ever
+# merge. Accepted rather than worked around: this repo's only contributor is its own org, and
+# failing loudly beats silently skipping a check.
 on:
   pull_request:
     branches: [main]
 
 permissions:
   contents: read
+
+# Cancels a stale run when a PR is pushed again -- -lock=false means no state-safety reason to
+# let an outdated run finish, and this is the one workflow file where every run is a fresh
+# AWS-credentialed job against attacker-editable PR-branch code, so idle runs are pure cost.
+concurrency:
+  group: plan-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   tofu-plan:
@@ -84,13 +111,26 @@ jobs:
 
       - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
 
+      # role-duration-seconds bounds the exfiltration window if PR-branch code (this job runs
+      # the workflow FROM the PR branch, and init below evaluates the PR's own .tf files)
+      # manages to leak the session out via a crafted provider/data source -- the role has no
+      # write verbs, but its read scope covers full plan-time state, so shortening the STS
+      # session lifetime from the 1-hour default is a cheap bound on that residual.
+      # role-session-name: CloudTrail attribution for this specific run, per Task 4's own
+      # "identity is read from the run, never inferred from the file" criterion.
       - uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
         with:
           role-to-assume: ${{ secrets.AWS_PLAN_ROLE_ARN }}
+          role-session-name: tofu-plan-${{ github.run_id }}
+          role-duration-seconds: 900
           aws-region: us-east-1
 
+      # -lockfile=readonly: this is a PR-branch-authored config, and a plain `init` silently
+      # fetches/updates providers per the PR's own required_providers block -- a provider
+      # binary is arbitrary code that would run holding this job's AWS credentials. Readonly
+      # confines init to what the committed .terraform.lock.hcl already pins.
       - name: OpenTofu Init
-        run: tofu init
+        run: tofu init -lockfile=readonly
 
       # -lock=false: this role has no s3:PutObject (read-only by design), and a PR-time plan
       # must never contend with a concurrent apply's lock anyway.
@@ -100,7 +140,13 @@ jobs:
       - name: OpenTofu Plan
         run: tofu plan -no-color -lock=false -input=false -out=tfplan > /dev/null
 
-      # F16/BR-D4: summarize, never dump. Resource actions and addresses only.
+      # F16/BR-D4: summarize, never dump. Resource actions and addresses only -- never an
+      # attribute value. Value-free only as long as no resource here uses for_each/count (a
+      # resource's instance key rides its own `.address`) -- true today (grep -rn
+      # 'for_each|count *=' modules/ environments/ bootstrap/ finds none), not enforced. Unlike
+      # deploy.yml's identical caveat, this job's config is PR-branch-authored, so a PR could
+      # add one -- the value that would leak is bounded to what's already reachable via this
+      # job's own kms:Decrypt (see this file's header), not a new class of exposure.
       - name: Summarize plan
         run: |
           set -euo pipefail

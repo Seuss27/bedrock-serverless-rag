@@ -172,7 +172,8 @@ identity **while the old role still exists as a fallback**.
 | Tasks 0a–0c | **down** | Upstream-only work |
 | Task 1 | **down** | ⚠️ **Required** — the boundary is set at `CreateRole` time, which avoids the missing `iam:PutRolePermissionsBoundary` verb entirely |
 | Task 2 → approve this merge's rebuild | comes **up** | Encryption must be proven, and Task 3 needs a non-empty state |
-| Task 3, Task 4 | **up** | `No changes.` only means something against 12 tracked resources; Task 4's verify needs real destroy + real create |
+| Task 3 | **up** | `No changes.` only means something against 12 tracked resources |
+| Task 4 | **down entering it; up → down within step 3** | *(Corrected 2026-08-11, `S2`-T4 PR A.)* Steps 1–2 (PR A) are IAM/workflow-file-only — no AWS lab state change. A local admin-SSO `tofu destroy` on 2026-08-11 already left the lab down before this task started; step 3's own cycle proves the create verbs (apply) then the destroy verbs, ending down again — see the dated banner in step 3 for why a leading destroy dispatch would have been a no-op |
 | after Task 4's verify | **down** | Tear down immediately |
 | Task 5 | **down** | |
 
@@ -627,15 +628,22 @@ lands, with no irreversible act waiting on it and no pressure to weaken it to un
 
   3. **Verify — the FULL BR-D20 cycle, under the new identity, while the old role still exists.**
      ⚠️ **This replaces the old criterion, which was create-only and in practice a no-op refresh.**
-     With the lab already up from Task 2 and state migrated in Task 3, a merge-apply would report
-     `No changes.` and prove only that the new role can *read*.
 
-     > **⚠️ CORRECTED 2026-08-11 by `S2`-T4 PR A — the sub-order below assumed the lab was
-     > already up.** It is not: `destroy-ai-lab` (dispatch `31337481993`) tore all 12 resources
-     > down 2026-08-09, and no apply has succeeded since. The original order put a
-     > `destroy-ai-lab` dispatch **second**, before anything had been built on the new identity
-     > — against an empty lab, that step is a `No changes.` no-op and proves nothing about the
-     > destroy verbs. **The body below is rewritten to match; this banner is the record of why.**
+     > **⚠️ CORRECTED 2026-08-11 by `S2`-T4 PR A — the sub-order below, and the sentence just
+     > above about a merge-apply reporting `No changes.`, both assumed the lab was up entering
+     > this task. It is not, and the earlier draft of THIS banner cited the wrong evidence for
+     > that too.** Task 2's own rebuild **did** succeed — `tofu-plan-main`/`tofu-apply` green on
+     > run `31443695508` (2026-08-10T23:47Z, PR #109) then again on `31444836788`
+     > (2026-08-11T00:06Z) — and Task 3 migrated that live state. What actually left the lab
+     > down again is a **local admin-SSO `tofu destroy` on 2026-08-11**, recorded in
+     > `.ai/next-steps.md`'s Task-3-verified handoff — **not** the `destroy-ai-lab` CI dispatch
+     > from 2026-08-09 (`31337481993`), which predates Task 2's rebuild entirely and cannot be
+     > what tore down state that did not yet exist when it ran. Net effect on this step is the
+     > same either way — the lab is down entering Task 4 — but "no apply has succeeded since"
+     > was false and is dropped. The original order put a `destroy-ai-lab` dispatch **second**,
+     > before anything had been built on the new identity — against an empty lab, that step is a
+     > `No changes.` no-op and proves nothing about the destroy verbs. **The body below is
+     > rewritten to match; this banner is the record of why.**
 
      1. A PR plan job green on the **plan** role → exercises F56 gap b's new workload-read policy.
      2. Merge → `tofu-apply` plans `12 to add` and succeeds, on the **apply** role → **exercises
@@ -693,10 +701,12 @@ lands, with no irreversible act waiting on it and no pressure to weaken it to un
   `.github/workflows/ruleset-drift.yml`, `.ai/project.yml`, **the live ruleset**
 - **Acceptance Criteria:** `grep -rn 'iam:CreateRole\|iam:PutRolePolicy' bootstrap/` returns
   nothing. `aws iam get-role --role-name github-actions-deploy-role` returns `NoSuchEntity`. **The
-  four-step cycle in (3) has run green, with run links** — the plan job authenticating as the
-  **plan** role and the apply job as the **apply** role, each evidenced by the run, never inferred
-  from the file. **The adopted role's trust condition uses `StringEquals`** — read from live AWS,
-  not from the upstream HCL. The three required-check lists are **equal as sets**.
+  three run-producing steps in (3) — plan, apply, destroy — have each run green, with run links**
+  *(corrected 2026-08-11: the reorder banner above leaves step 3's fourth item a terminal state,
+  not a run)* — the plan job authenticating as the **plan** role and the apply/destroy jobs as the
+  **apply** role, each evidenced by the run, never inferred from the file. **The adopted role's
+  trust condition uses `StringEquals`** — read from live AWS, not from the upstream HCL. The three
+  required-check lists are **equal as sets**.
   **⚠️ SUPERSEDED CRITERION:** the original *"`deploy.yml` contains no `||` fallback"* is
   satisfiable by the dangerous unblock — pointing the plan job at the apply role removes the
   fallback *and* hands a PR-triggered job apply-capable credentials.
@@ -789,9 +799,11 @@ independently — deleting the directory requires the provider to be out of its 
 ## Definition of Done
 
 `gates.green` passes — **with the two re-enabled tflint rules**. Every required check green,
-including the newly-required `tofu-plan`. **The full BR-D20 cycle — destroy → apply → verify — has
-run on the upstream roles against the org backend**, with run links *(distinct from `MW`'s DoD,
-which proved the cycle at all; this proves it still works after the identity and backend swap)*.
+including the newly-required `tofu-plan`. **The full BR-D20 cycle — apply → destroy → verify,
+per Task 4 step 3's corrected order (2026-08-11: the lab was already down entering this task, so
+a leading destroy would have been a no-op) — has run on the upstream roles against the org
+backend**, with run links *(distinct from `MW`'s DoD, which proved the cycle at all; this proves
+it still works after the identity and backend swap)*.
 The state object in the org bucket is **client-side encrypted** (BR-D22). **`bootstrap/` does not
 exist**, and neither do its entries in `gates.green`, `code_paths`, `ci.yml` or `.tflint.hcl`.
 `.ai/project.yml`'s header date is current. The **residual register below is filled in and

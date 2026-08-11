@@ -95,26 +95,6 @@ jobs:
             exit 1
           fi
 
-      # TEMPORARY diagnostic for the data_plane_principal_arns validation failure -- prints
-      # only PASS/FAIL and the 13-char service prefix (arn:aws:iam:: vs arn:aws:sts::), never
-      # the account id, role name, or full ARN (BR-D4). Removed once the culprit is found.
-      - name: "DEBUG: check data-plane principal ARN shapes"
-        env:
-          ARN1: ${{ secrets.AWS_OIDC_ROLE_ARN }}
-          ARN2: ${{ secrets.SSO_ADMIN_ROLE_ARN }}
-        run: |
-          set -euo pipefail
-          check() {
-            local name="$1" val="$2"
-            if [[ "$val" =~ ^arn:aws:iam::[0-9]{12}:role/ ]]; then
-              echo "$name: PASS (len=${#val})"
-            else
-              echo "$name: FAIL (len=${#val}, prefix=${val:0:13})"
-            fi
-          }
-          check "AWS_OIDC_ROLE_ARN" "$ARN1"
-          check "SSO_ADMIN_ROLE_ARN" "$ARN2"
-
       # F-4 defense-in-depth -- see the identical step in deploy.yml's jobs. Derived from the
       # SAME expression passed to role-to-assume below, never hardcoded.
       - name: Register bare account id for log masking

@@ -143,8 +143,10 @@ not adding a weak control, it is **deleting a working one before its replacement
 Every identity retirement below is written as **adopt, verify, then delete** — never the other
 order. **⚠️ And this pass found that discipline was being applied to the *identity* but not to
 the *capability*:** the old Task 2 verified only that the new role could run an apply, which —
-with the lab already up and state migrated — is a **no-op refresh** proving nothing about the
-create path and nothing at all about the destroy path. The destroy path has been exercised
+*(at the time this reasoning was written, with the lab up and state migrated — since corrected
+2026-08-11: the lab is down entering Task 4, so a merge-apply is a real `12 to add`, not a
+no-op; see Task 4 step 3's banner. The conclusion below, "prove the destroy path too," is
+unaffected either way)* — proves nothing about the destroy path. The destroy path has been exercised
 **exactly once** in this repo's history and `state_access_policy`'s own comment says *"anything
 further down the destroy graph remains just as unmeasured."* Under the old role each missing
 verb cost a local PR and a local apply; **under the new role each one costs an upstream PR and a

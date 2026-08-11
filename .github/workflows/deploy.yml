@@ -100,6 +100,10 @@ jobs:
           echo "::add-mask::$account_id"
 
       - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          # Pinned, not left at the action's own "latest" default -- SD's
+          # .devcontainer/Dockerfile pins the same version; keep both in sync (BR-D15).
+          tofu_version: "1.12.5"
 
       # S2-T4 PR A: the upstream read-only plan role is adopted (secrets.AWS_PLAN_ROLE_ARN
       # exists) -- the `||` fallback to the apply-capable secrets.AWS_OIDC_ROLE_ARN is
@@ -230,6 +234,10 @@ jobs:
       - run: pip install -r requirements.txt
 
       - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          # Pinned, not left at the action's own "latest" default -- SD's
+          # .devcontainer/Dockerfile pins the same version; keep both in sync (BR-D15).
+          tofu_version: "1.12.5"
 
       # BR-D4 EXCEPTION, recorded: this role ARN rides `secrets.*`, not `vars.*`, even
       # though it is restricted-not-secret by BR-D4's own definition. Measured live
@@ -337,6 +345,10 @@ jobs:
           echo "::add-mask::$account_id"
 
       - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          # Pinned, not left at the action's own "latest" default -- SD's
+          # .devcontainer/Dockerfile pins the same version; keep both in sync (BR-D15).
+          tofu_version: "1.12.5"
 
       - uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
         with:

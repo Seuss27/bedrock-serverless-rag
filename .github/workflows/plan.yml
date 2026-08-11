@@ -110,6 +110,10 @@ jobs:
           echo "::add-mask::$account_id"
 
       - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          # Pinned, not left at the action's own "latest" default -- SD's
+          # .devcontainer/Dockerfile pins the same version; keep both in sync (BR-D15).
+          tofu_version: "1.12.5"
 
       # role-duration-seconds bounds the exfiltration window if PR-branch code (this job runs
       # the workflow FROM the PR branch, and init below evaluates the PR's own .tf files)

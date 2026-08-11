@@ -35,7 +35,9 @@ Three OpenTofu roots, and the distinction matters for every change:
 > full finding inventory from the 2026-08-05 evaluation (**F1–F58**), the sprint sequence
 > (S0 governance → **ST org transfer** → **MW make-it-work** → S1 pipeline → S2 identity +
 > `bootstrap/` retirement → **S3+S4 merged** data-plane and RAG → S5 Python cleanup → S6 docs;
-> **SD the devcontainer is DEFERRED**, not parallel), and the locked decisions
+> ~~**SD the devcontainer is DEFERRED**, not parallel~~ **SD is un-deferred as of 2026-08-11 —
+> the Docker precondition was never actually true — and runs parallel to the active sprint,
+> as its own plan always specified**), and the locked decisions
 > (**BR-D1..BR-D26**). It is also the **threat model**.
 >
 > Three facts shape every judgement call here. **This repo is PUBLIC.** **`main` IS protected
@@ -458,7 +460,9 @@ mismatch there is not evidence of misconfiguration.
   inventory (**F1–F58**), **BR-D1..BR-D26**, the sprint sequence, **§ 5.1 what BR-D23 cut and
   the premise that would bring each cut back**, the public-repo rules.
 - **`sprints/*/sprint_plan.md`** — the per-sprint plans: S0, **ST**, **MW**, S1, S2, S3+S4
-  (merged), S5, S6, plus **SD** which is **deferred** on a Docker precondition, not parallel.
+  (merged), S5, S6, plus **SD** — ~~which is **deferred** on a Docker precondition, not
+  parallel~~ **un-deferred 2026-08-11: the Docker precondition was never true, and it runs
+  parallel to the active sprint as its own plan always specified.**
   Each carries a **Critical review** section recording the security, logic, and execution
   objections raised against it — read that before executing the tasks, not after. ~~**Sprints
   reshaped by BR-D23 carry a banner under the title naming what was cut, moved or kept; the

@@ -2,32 +2,45 @@
 
 # SD — Development container
 
-> **⚠ DEFERRED, 2026-08-05, by BR-D23 — with a stated precondition. Do not execute this sprint.**
+> **⚠ ~~DEFERRED, 2026-08-05, by BR-D23 — with a stated precondition. Do not execute this
+> sprint.~~**
 >
-> **The precondition is Docker on the workstation, which does not exist today.** That makes SD
-> undeliverable regardless of merit — a fact, not a judgement, and it is why this is "deferred"
-> rather than "optional": there is nothing to re-argue each sprint. **Revisit when Docker is
-> available**, and not before.
+> ~~**The precondition is Docker on the workstation, which does not exist today.** That makes
+> SD undeliverable regardless of merit — a fact, not a judgement, and it is why this is
+> "deferred" rather than "optional": there is nothing to re-argue each sprint. **Revisit when
+> Docker is available**, and not before.~~
 >
-> On the merits, recorded so the decision is not re-litigated from scratch:
+> ~~On the merits, recorded so the decision is not re-litigated from scratch:~~
 >
-> - It creates a **permanent obligation** (BR-D15: every pin kept *equal* to CI's, forever, on
->   every future tool bump) — the largest capability investment in the roadmap.
-> - Against the smallest demonstrated pain. The frictions actually **observed** are two: CRLF
+> ~~- It creates a **permanent obligation** (BR-D15: every pin kept *equal* to CI's, forever, on
+>   every future tool bump) — the largest capability investment in the roadmap.~~
+> ~~- Against the smallest demonstrated pain. The frictions actually **observed** are two: CRLF
 >   (already fixed by `.gitattributes` in S0-T5) and the `-backend=false` wrinkle (already two
->   lines in `CLAUDE.md`).
-> - **It was never actually parallel.** Three of its five tasks read values out of files S1
->   creates, so the "runs alongside everything" premise in the header below is wrong.
+>   lines in `CLAUDE.md`).~~
+> ~~- **It was never actually parallel.** Three of its five tasks read values out of files S1
+>   creates, so the "runs alongside everything" premise in the header below is wrong.~~
 >
-> **If it is ever picked up: it must not gate S5.** S5's dependency on it is removed.
+> ~~**If it is ever picked up: it must not gate S5.** S5's dependency on it is removed.~~
+>
+> **✅ CORRECTED 2026-08-11 — this sprint is no longer deferred, and the "on the merits"
+> bullets above are struck rather than retained as live reasoning.** The stated precondition
+> was never true: Docker has always been available on this workstation. That is not a
+> condition that changed since 2026-08-05, it is a factual error present in the banner from
+> the day it was written — there was never a "revisit when Docker is available" moment to
+> wait for. Separately, the operator has decided devcontainer adoption is standard practice
+> going forward, so the merit bullets above are struck as a superseded position, not preserved
+> as a still-open tradeoff. **SD resumes at Task 1**, run in parallel with S2 per the
+> Dependencies line below, which was correct all along.
 
 **Sprint Goal:** Make the green gate reproducible. `Reopen in Container` gives any
 contributor — and any agent session — the exact pinned toolchain the CI checks run, on one
 Linux base, so local results and CI results are the same result.
 
-**Closes:** nothing, while deferred. BR-D15 is **recorded but not yet earned** — the decision
+**Closes:** ~~nothing, while deferred. BR-D15 is **recorded but not yet earned** — the decision
 describes a devcontainer that does not exist, so treat it as a design intent rather than an
-in-force rule until Docker is available. No `F` finding — this is capability
+in-force rule until Docker is available.~~ **Corrected 2026-08-11: BR-D15 becomes in-force
+once Task 1 lands** — the deferral that kept it a design intent rather than a rule is the
+part that was wrong, not BR-D15 itself. No `F` finding — this is capability
 work, not remediation. It removes a recurring **class** of friction rather than a defect:
 Windows/PowerShell/CRLF drift, a missing `jq`, a `tofu` version that differs from the runner's.
 

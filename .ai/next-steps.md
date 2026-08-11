@@ -6,72 +6,97 @@ Regenerate this at the end of every working session.
 
 ## Now
 
-**`implementing` — `S2` (Identity, state reconciliation, and `bootstrap/` retirement).**
-Tasks 1, 2, and 3 are **done and verified**. **Task 0 (0a/0b/0c) is next** — Task 4 is
-blocked on it, not the other way around.
+**`blocked` — `S2` (Identity, state reconciliation, and `bootstrap/` retirement).**
+Tasks **0 (0a/0b/0c), 1, 2, 3 are done, applied, and verified.** **Task 4 is scoped and
+blocked** on an upstream apply (below).
 
-## Just done
+## ⚠️ The incoming cursor pointed at already-completed work — corrected
 
-**S2 Task 3 complete and verified**, 2026-08-11 — bridge, then migrate to the org backend:
+The previous cursor said *"the real next action is Task 0, not Task 4 … Scope Task 0a first."*
+**Wrong, in the direction that wastes a session redoing applied infrastructure.** Re-measured:
 
-- Looked up the state-encryption KMS key ARN — **first attempt was wrong** (matched an
-  unrelated alias; `IncorrectKeyException` proved it). Corrected by reading the ARN actually
-  granted on the deployed `github-actions-deploy-role`'s policy via `aws iam get-role-policy`,
-  not by guessing again.
-- Verified the precondition first: 12 managed resources tracked (+1 data source) before
-  migrating — Task 3's `No changes.` criterion is meaningful only against a populated state.
-- Repointed `environments/ai-lab/backend.tf` to `glunk-works-tofu-state-00042`; human ran
-  `tofu init -migrate-state` + `tofu plan` locally under admin-SSO — `No changes.`, all 12
-  resources intact.
-- Shipped as **PR #111, merged** (`e8247d9`). Critic-gate was proposed and **explicitly
-  declined** by the human for this diff — shipped with no critic look, on the record.
-- CI's `tofu-plan-main` went green against the org bucket (Task 3's CI criterion, satisfied).
-- ⚠️ **`tofu-apply` then failed for a NEW reason** — not a declined Environment approval:
-  `s3:PutObject AccessDenied` on the org bucket's `.tflock` object. **This is expected**:
-  Task 3's bridge policy is deliberately read-only (no `PutObject`/`DeleteObject`) — the
-  first CI *write* to the org bucket is explicitly Task 4's job, via the upstream apply role.
-  Matches Task 4's own spec (`tofu plan -lock=false` is required for exactly this reason).
-  No state was written or corrupted. **CLAUDE.md's red-X paragraph doesn't yet name this as
-  a third category** (declined / real-problem / this) — worth a correction if it trips
-  someone up again.
-- **Lab torn down** at the human's request (BR-D20) via a **local** admin-SSO `tofu destroy`
-  — not the `destroy-ai-lab` CI workflow, which would hit the identical `AccessDenied`.
-  Verified independently: `aws opensearchserverless list-collections` returns zero.
+- **Task 0a/0b** landed and were verified — this repo's own cursor-sync **PR #102**.
+- **Task 0c**: `glunk-works/global-bootstrap#11` — **MERGED 2026-08-10**, and **applied**.
+- **Confirmed in live AWS**: both roles exist — `github-actions-bedrock-serverless-rag` and
+  `…-plan` (names only, BR-D4). Apply role's operator is **`StringEquals`** (**F2 closed at
+  the IAM layer**), subjects exactly `ref:refs/heads/main` + `environment:production`, **no
+  `:pull_request`**. Plan role trusts `:pull_request` **and** `:ref:refs/heads/main`
+  (**F56 gap (a) closed**). Both carry the BR-D27 ID-qualified prefix.
+
+**The prior session's evidence was real but misread**: it ran `gh secret list`, found no
+`AWS_PLAN_ROLE_ARN`, and concluded the upstream role didn't exist. That secret is *this
+repo's* wiring, which **Task 4 step 1 creates**. **A missing consumer is not a missing
+producer.**
+
+## Just done — Task 4 scoped, and its real blocker found and fixed upstream
+
+- **Task 4 split agreed (3 PRs)**: **PR A** = step 1 secrets + step 2 `plan.yml` +
+  `ci.yml` header amendment → **step 3 verification cycle** (no PR) → **PR B** = step 4
+  delete `bootstrap/`'s role + `state_access_policy` (**F1**) + the Task 3 bridge (human
+  apply) → **PR C** = step 5 require `tofu-plan` as the seventh check.
+- 🔴 **Found the actual live break in step 1 — and it is NOT the one the sprint plan
+  documents.** The plan warns the break would be a trust-policy subject mismatch; that is
+  closed. The real one: **the plan role cannot complete a `tofu init` at all.** OpenTofu's
+  `aws_kms` key provider calls **`kms:GenerateDataKey` unconditionally** on every operation
+  (measured from its source — `internal/encryption/keyprovider/aws_kms/provider.go`'s
+  `Provide()`; `Decrypt` is the *conditional* call). The plan role had only
+  `kms:Decrypt`/`kms:DescribeKey`. Creating `secrets.AWS_PLAN_ROLE_ARN` flips
+  `tofu-plan-main`'s `||` fallback onto it → **every merge to `main` would fail at init.**
+- **Fixed upstream: `glunk-works/global-bootstrap#12` — OPEN, awaiting human review +
+  hand-apply.** Baseline `No changes.`; with the fix `0 to add, 1 to change, 0 to destroy`
+  (`aws_iam_policy.bedrock_rag_plan_policy` only). No sibling project's policy is in the
+  change set. Not a write path — writing state needs `s3:PutObject`, which the plan role
+  still lacks.
+- **⚠️ This corrects a previous `security-critic` recommendation.** The verb was dropped on
+  a critic's advice; it reads as correct least-privilege and is tool-breaking. The
+  superseded reasoning is retained struck-through in the upstream file with a
+  do-not-re-tighten warning.
+- **No critic pass ran on the upstream diff** — offered and declined in favour of handing
+  off. On the record.
+- Also fast-forwarded a stale local `main` to `c06856d` (cursor-sync PR #112 had merged) and
+  pruned 2 squash-merged branches. Ruleset healthy (4 rule types, 6 required checks).
 
 ## Next
 
-**S2 Task 0** (0a → 0b → 0c), not Task 4. Confirmed via `gh secret list`: no
-`AWS_PLAN_ROLE_ARN` exists yet, only the local `AWS_OIDC_ROLE_ARN` — the upstream role Task 4
-adopts does not exist until Task 0c is merged and human-applied (the sprint plan's own words).
+1. **Human: review and apply `glunk-works/global-bootstrap#12`** (hand-applied; that repo
+   has no CI and — worth noting separately — **no branch protection at all**).
+2. **Verify the verb landed** before anything else:
+   `aws iam get-policy-version` on `glunk-works-bedrock-serverless-rag-plan-readonly`,
+   `StateEncryptionKeyReadAccess` must list `kms:GenerateDataKey`. Read it from AWS, never
+   from the upstream HCL.
+3. **Then PR A.** Full step-by-step and the 8 inherited security constraints are in
+   `sprints/S2_identity_least_privilege/sprint_plan.md` `### Task 4` (re-derive the line
+   range with `grep -n '^### Task 4'`). Key ones: `plan.yml` is a **new third workflow
+   file** (it can live in neither `ci.yml` — uncredentialed by construction — nor
+   `deploy.yml` — no `pull_request` trigger); it points at the **plan** role from its first
+   commit; `tofu plan -lock=false`; no `name:` override; summarize to
+   `$GITHUB_STEP_SUMMARY`, never an artifact.
 
-Read **`ST` Task 2b** (`sprints/ST_org_transfer/sprint_plan.md`) first — it is the *normative*
-spec Task 0 implements, retained verbatim. Then re-derive Task 0's line range with
-`grep -n '^### Task 0\|^#### Task 0' sprints/S2_identity_least_privilege/sprint_plan.md`
-rather than trusting a number written here.
+⚠️ **Also correct the sprint plan's step 3 sub-order in PR A** (dated banner, per the
+banner-vs-body convention): it is written *destroy → merge/apply → destroy* assuming "the
+lab already up from Task 2". **The lab is torn down**, so the first destroy dispatch is a
+no-op proving nothing. Correct order from here: **PR plan green → merge/apply (`12 to add`,
+create verbs) → destroy dispatch (destroy verbs) → down.**
 
-**Task 0 splits three ways, three PRs, two upstream applies:**
-- **0a** — subject-prefix schema. Proves `No changes.`, needs no apply of its own.
-- **0b** — the two trust-policy shape changes. **Changes the trust policy of three sibling
-  projects** (`bounty-infra`, `tri-loop-dev`, `resume-optimizer`) — the **largest blast
-  radius in this sprint**, not 0c.
-- **0c** — this project's entry, the boundary, and the findings-archive `Deny`.
+⚠️ **No other PR may be open across this cutover** (`strict_required_status_checks_policy`).
 
-**Model: `opus` / architect** — this needs a reviewed plan before implementation, not direct
-coding.
+**Model: `sonnet` / coder** — the design is settled; PR A is specified implementation.
+**`/way-of-working:critic-gate` is mandatory on PR A** (security-critic + architect): it puts
+a credentialed job back on `pull_request` for the first time since `S1b`-T2 closed F3's
+exploitable instance.
 
 ## Open gates and blockers
 
-**HITL Gate: OPEN.** Task 0b touches shared org infrastructure outside this repo. Do not
-begin any Task 0 implementation unattended — scope it with the human first, per the sprint
-plan's own Critical review section.
+**HITL Gate: OPEN.** `global-bootstrap#12` must be reviewed and hand-applied by a human
+before any Task 4 implementation begins — PR A's first act creates the secret that flips CI
+onto the role that PR fixes. Do not start unattended.
 
 **Not filed, deliberately** (`security-critic` #1, LOW, carried from Task 2): no required
-check can *see* the encryption block, so deleting `encryption.tf` or its `enforced = true`
-line passes all six checks green. Sketched fix and deferral reasons are in `.ai/state.json`'s
-`known_followups`.
+check can *see* `encryption.tf`'s `enforced = true`, so deleting it passes all six checks
+green. Details in `.ai/state.json`'s `known_followups`.
 
 ## Pointers
 
 - `docs/hardening_roadmap.md` — reference of record and threat model. Unchanged this session.
-- `sprints/S2_identity_least_privilege/sprint_plan.md` — Tasks 1–3 done; Task 0 is next.
-- `sprints/ST_org_transfer/sprint_plan.md` — Task 2b, the normative spec for Task 0.
+- `sprints/S2_identity_least_privilege/sprint_plan.md` — Tasks 0–3 done; Task 4 next.
+- `glunk-works/global-bootstrap#12` — the open upstream blocker.

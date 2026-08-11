@@ -18,7 +18,10 @@
 #     credentials, and var.state_kms_key_arn need not even be set. So ci.yml's tofu-validate
 #     -- uncredentialed by construction (S1b-T2) and a required check -- is unaffected, and
 #     fork PRs still pass. Nothing here is an argument for putting AWS credentials into
-#     ci.yml; that would put a credentialed job back on pull_request (F3, closed by S1b-T2).
+#     ci.yml; that stays uncredentialed by construction even after S2-T4 PR A puts a
+#     credentialed job back on pull_request elsewhere (plan.yml, on the read-only plan role --
+#     see that file's header for the F2 residual this reopens at the trigger-type level, even
+#     though F3's escalation-capable INSTANCE stays closed).
 #   - A REAL `tofu init` DOES evaluate it, and fails closed without the variable
 #     ("Unable to compute static value"). deploy.yml's three jobs therefore each set
 #     TF_VAR_state_kms_key_arn from secrets.STATE_KMS_KEY_ARN.

@@ -87,12 +87,9 @@ jobs:
           persist-credentials: false
 
       # F-4 defense-in-depth -- see the identical step in tofu-apply below.
-      # Derived from the SAME expression passed to role-to-assume below (not hardcoded to
-      # the apply role): the day S2-T2 creates AWS_PLAN_ROLE_ARN, a mask pinned to the
-      # wrong role would silently mask the wrong account with no failing check.
       - name: Register bare account id for log masking
         env:
-          DEPLOY_ARN: ${{ secrets.AWS_PLAN_ROLE_ARN || secrets.AWS_OIDC_ROLE_ARN }}
+          DEPLOY_ARN: ${{ secrets.AWS_PLAN_ROLE_ARN }}
         run: |
           set -euo pipefail
           account_id="$(echo "$DEPLOY_ARN" | cut -d: -f5)"
@@ -104,12 +101,15 @@ jobs:
 
       - uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
 
-      # No read-only plan role exists yet (S2-T0 creates one) -- falls through to the
-      # apply-capable role today. The `||` shape means S2-T2 flips this by creating the
-      # secret, with no workflow edit.
+      # S2-T4 PR A: the upstream read-only plan role is adopted (secrets.AWS_PLAN_ROLE_ARN
+      # exists) -- the `||` fallback to the apply-capable secrets.AWS_OIDC_ROLE_ARN is
+      # dropped in the same change, per this repo's own rule that a push-triggered plan job
+      # must never hold apply-capable credentials (BR-D7). A missing/empty
+      # AWS_PLAN_ROLE_ARN now fails the masking step above rather than silently falling
+      # through to a more powerful role.
       - uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
         with:
-          role-to-assume: ${{ secrets.AWS_PLAN_ROLE_ARN || secrets.AWS_OIDC_ROLE_ARN }} # S2-T2: drop the fallback once the upstream plan role is adopted
+          role-to-assume: ${{ secrets.AWS_PLAN_ROLE_ARN }}
           aws-region: us-east-1
 
       - name: OpenTofu Init

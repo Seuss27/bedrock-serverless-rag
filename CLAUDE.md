@@ -35,7 +35,9 @@ Three OpenTofu roots, and the distinction matters for every change:
 > full finding inventory from the 2026-08-05 evaluation (**F1–F58**), the sprint sequence
 > (S0 governance → **ST org transfer** → **MW make-it-work** → S1 pipeline → S2 identity +
 > `bootstrap/` retirement → **S3+S4 merged** data-plane and RAG → S5 Python cleanup → S6 docs;
-> **SD the devcontainer is DEFERRED**, not parallel), and the locked decisions
+> ~~**SD the devcontainer is DEFERRED**, not parallel~~ **SD is un-deferred as of 2026-08-11 —
+> the Docker precondition was never actually true — and runs parallel to the active sprint,
+> as its own plan always specified**), and the locked decisions
 > (**BR-D1..BR-D26**). It is also the **threat model**.
 >
 > Three facts shape every judgement call here. **This repo is PUBLIC.** **`main` IS protected
@@ -67,7 +69,10 @@ Three OpenTofu roots, and the distinction matters for every change:
 > in a single clean pass (run `31274829358`). `tofu-plan-main` now succeeds in CI on every
 > push to `main`, so the missing-variable gap is gone too and **CI plan output is as
 > trustworthy as a local one**. `state_access_policy` still holds `MW`-T5's widened verb set
-> (F55, closed 2026-08-07) until `S2`-T2 deletes the whole resource.
+> (F55, closed 2026-08-07) until ~~`S2`-T2~~ **`S2`-T4 step 4** deletes the whole resource.
+> *(Sprint corrected 2026-08-11 by `S2`-T4 PR A — `S2`-T2 is native state encryption; the role
+> and policy deletion is Task 4 step 4, same fix as the § GitHub Actions security paragraph
+> below and the roadmap's F1/F2 rows.)*
 > **What replaces it as the harder half:** a *working* pipeline is not a *least-privileged*
 > one. The role CI applies with is still F1's escalation-capable role, and until `S2` retires
 > it the `production` Environment approval is the only control in front of it.
@@ -168,7 +173,7 @@ if no gate existed on a repo that has one.
   the one step named above (`tflint`'s plugin install). "Safe on a fork PR" is true again,
   file-wide, and this time by removing a secret dependency rather than by accepting one.)*
   (credentialed, triggers are `push: branches: [main]` + `workflow_dispatch` only, **no
-  `pull_request` trigger at all**). This repo now has **zero credentialed `pull_request`
+  `pull_request` trigger at all**). ~~This repo now has **zero credentialed `pull_request`
   jobs**, for the first time in its history. **But nothing at the IAM layer moved**: the trust
   policy's trailing `:*` still admits `:pull_request` (**F2**, still open, `S2`-T2), and no
   separate plan-only role exists yet (**F56**, still `S2`-T0) — so `docs/hardening_roadmap.md`
@@ -178,11 +183,34 @@ if no gate existed on a repo that has one.
   per that sprint's arrival banner) is the next thing that puts a job back on `pull_request`,
   and it must use the read-only plan role `S2`-T0 mints, never `secrets.AWS_OIDC_ROLE_ARN`, or
   **F3** — not F13, which S1a-T5 already closed and cannot "return" — reopens at the code layer
-  in the sprint meant to retire it.
+  in the sprint meant to retire it.~~
+  **✅ CORRECTED 2026-08-11 by `S2`-T4 PR A — the zero-credentialed-`pull_request`-jobs era is
+  OVER, and here is exactly what changed and what did not.** *(Two smaller errors in the struck
+  text while here: the deferred job was always `S2`'s own **Task 4**, never "Task 2" — Task 2 is
+  native state encryption, BR-D22; and its Sprint cell should read `S2-T4`, not `S2-T2`.)*
+  `.github/workflows/plan.yml` now runs a credentialed `pull_request` job — job id `tofu-plan`,
+  authenticating as `secrets.AWS_PLAN_ROLE_ARN`, the read-only plan role
+  `glunk-works/global-bootstrap#11`/`#12` minted for exactly this (confirmed live:
+  `kms:Decrypt`/`DescribeKey`/`GenerateDataKey` but no `kms:Encrypt`; `s3:GetObject`/`ListBucket`
+  but no `PutObject`). **This is the rule above holding, not breaking it** — `F3` stays closed
+  at the code layer because this job never touches the escalation-capable role.
+  **What has NOT moved, and is a live residual until `S2`-T4 step 4's human apply:**
+  `bootstrap/oidc-setup.tf`'s `github-actions-deploy-role` (the **F1** escalation-capable role)
+  still exists in AWS, and its trust policy's trailing `:*` still admits `:pull_request`
+  (**F2**, still open — read the live condition, not this sentence, before relying on it). No
+  secret in this repo points at that role's ARN anymore (`secrets.AWS_OIDC_ROLE_ARN` was
+  repointed to the new least-privilege apply role in the same change that created
+  `AWS_PLAN_ROLE_ARN`) — but the role's ARN is not itself a secret, and a PR branch could
+  hardcode it directly into a workflow file's `role-to-assume:` and, because F2 is still open,
+  successfully assume it. **This window closes only when `S2`-T4 step 4 deletes that role, not
+  before.** Until then, treat any credentialed `pull_request` job in this repo — `plan.yml`
+  included — as sitting beside a live escalation path it does not itself use.
   > **Two corrections, 2026-08-07, and the second one is the trap.** *(a)* The subject was
   > `repo:<owner>/<repo>:*` until ST-T3 narrowed it; it is now a **single** subject rather than
   > a glob over owners — **and the conclusion above is completely unchanged**, because the
-  > trailing `:*` is the part that admits `:pull_request` (**F2**, still open, closed in S2-T2).
+  > trailing `:*` is the part that admits `:pull_request` (**F2**, still open, closed in
+  > ~~S2-T2~~ **`S2`-T4 step 4** — corrected 2026-08-11, same error and same fix as this
+  > section's own paragraph above).
   > *(b)* **An org-owned repo presents an ID-QUALIFIED subject** —
   > `repo:<owner>@<org_id>/<repo>@<repo_id>:<context>` — which a plain
   > `repo:<owner>/<repo>:*` glob **does not match**. That is what broke CI authentication at
@@ -432,7 +460,9 @@ mismatch there is not evidence of misconfiguration.
   inventory (**F1–F58**), **BR-D1..BR-D26**, the sprint sequence, **§ 5.1 what BR-D23 cut and
   the premise that would bring each cut back**, the public-repo rules.
 - **`sprints/*/sprint_plan.md`** — the per-sprint plans: S0, **ST**, **MW**, S1, S2, S3+S4
-  (merged), S5, S6, plus **SD** which is **deferred** on a Docker precondition, not parallel.
+  (merged), S5, S6, plus **SD** — ~~which is **deferred** on a Docker precondition, not
+  parallel~~ **un-deferred 2026-08-11: the Docker precondition was never true, and it runs
+  parallel to the active sprint as its own plan always specified.**
   Each carries a **Critical review** section recording the security, logic, and execution
   objections raised against it — read that before executing the tasks, not after. ~~**Sprints
   reshaped by BR-D23 carry a banner under the title naming what was cut, moved or kept; the

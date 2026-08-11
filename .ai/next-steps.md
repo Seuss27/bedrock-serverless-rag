@@ -7,41 +7,39 @@ Regenerate this at the end of every working session.
 ## Now
 
 **`awaiting_review` — `S2` (Identity, state reconciliation, and `bootstrap/` retirement).**
-Tasks **0 (0a/0b/0c), 1, 2, 3 are done, applied, and verified.** **Task 4 PR A is shipped as
-[PR #114](https://github.com/glunk-works/bedrock-serverless-rag/pull/114)**, awaiting human
-review and merge.
+Tasks **0 (0a/0b/0c), 1, 2, 3 are done, applied, and verified.** **Task 4 PR A —
+[PR #114](https://github.com/glunk-works/bedrock-serverless-rag/pull/114) — has every required
+check green** and is ready for human review and merge.
 
-## Just done — the `global-bootstrap#12` blocker cleared, PR A implemented and shipped
+## Just done — PR A implemented, critic-gate converged, three live CI bugs found and fixed
 
-- **Verified live** (not just trusted the report) that `glunk-works/global-bootstrap#12`
-  merged and applied: `StateEncryptionKeyReadAccess` on the plan-readonly policy now lists
-  `kms:GenerateDataKey` alongside `kms:Decrypt`/`DescribeKey` (policy version v2). The plan
-  role can complete a real `tofu init`.
-- **Task 4 PR A implemented**: step 1 (secrets — `AWS_OIDC_ROLE_ARN` repointed at the new
-  apply role, `AWS_PLAN_ROLE_ARN` created for the plan role; done directly by the human, since
-  the action classifier blocks `gh secret set` from the agent in this session) + step 2
-  (`.github/workflows/plan.yml`, a new third workflow running the deferred PR-time `tofu-plan`
-  job on the read-only plan role) + the `ci.yml` header amendment + the Task 4 step 3 sub-order
-  correction in `sprint_plan.md` (the lab is down entering Task 4, not up, so the verify order
-  is plan → apply → destroy, not destroy-first).
-- **`/way-of-working:critic-gate` ran to convergence — mandatory, not skipped**: this PR puts a
-  credentialed job back on `pull_request` for the first time since `S1b`-T2 closed F3's
-  exploitable instance. **4 rounds** (security-critic + architect + docs-consistency, in
-  parallel each round; **2 rounds past the normal cap, with explicit human sign-off** to keep
-  going rather than ship with known contradictions open). Real findings fixed, not just
-  wording: `deploy.yml`'s stale `||` fallback (now points at the plan role alone);
-  `CLAUDE.md`/the roadmap's F3 row both still asserting "zero credentialed `pull_request`
-  jobs" file-wide; an unbounded credential-exfiltration window in `plan.yml` (added
-  `role-duration-seconds`/`role-session-name`, `-lockfile=readonly`, a concurrency group);
-  `encryption.tf`'s stale blanket "F3 closed by S1b-T2" claim; and — recurring across **three**
-  rounds — the same `S2-T2`/`S2-T4` sprint-numbering error (the bootstrap role's deletion is
-  Task 4 step 4, not Task 2/native-state-encryption) surfacing in one sibling copy after
-  another: `sprint_plan.md`'s Security Considerations section, the roadmap's planning-review
-  item, F1/F2's Sprint cells, and finally two spots inside `CLAUDE.md` contradicting its own
-  already-corrected text six and 130 lines away.
-- **5 commits** on `feat/s2-t4-pr-a-plan-role`. Rebased onto `main` after the human merged the
-  incoming cursor-sync PR #113 (Task 4's own "no other PR may be open across this cutover"
-  precondition), green gate re-verified clean post-rebase, PR #114 opened.
+- **Task 4 PR A implemented and critic-gate ran to convergence** (4 rounds, 2 past the normal
+  cap with explicit human sign-off) — see the previous cursor entry / PR #114's description for
+  the full findings list. `deploy.yml`'s stale `||` fallback, stale "zero credentialed
+  `pull_request` jobs" claims in `CLAUDE.md`/the roadmap, an unbounded credential-exfiltration
+  window in `plan.yml`, and a repeated `S2-T2`/`S2-T4` sprint-numbering error across five
+  sibling copies — all fixed.
+- **Then CI failed three times, each a genuine live bug the local green gate could not catch:**
+  1. `plan.yml`'s new `tofu init -lockfile=readonly` failed on the `ubuntu-latest` runner —
+     `environments/ai-lab/.terraform.lock.hcl` only recorded a **Windows** provider hash.
+     Fixed: `tofu providers lock -platform=linux_amd64 -platform=windows_amd64`, committed.
+  2. The repointed `secrets.AWS_OIDC_ROLE_ARN` failed `modules/aws-bedrock-rag/variables.tf`'s
+     `data_plane_principal_arns` validation. Traced with two rounds of a **temporary,
+     BR-D4-safe diagnostic step** (PASS/FAIL only, then a 16-byte hex dump) added to `plan.yml`,
+     run in CI, then removed once confirmed. Root cause: **PowerShell piping a string to a
+     native executable's stdin (`$val | gh secret set ...`) silently prepends a UTF-8 BOM that
+     `.Trim()` does not strip.** Fixed by using `gh secret set --body $val` instead of a pipe.
+     ⚠️ **BR-D4 near-miss, named rather than glossed over:** the hex-dump diagnostic printed the
+     first 3 digits of the AWS account id into a public CI log on one run. The step and that
+     code no longer exist, but the historical log line for that specific run is not
+     retroactively scrubbable.
+  3. One CI run's `zizmor` job hit a **GitHub platform-side reporting glitch** — every step
+     completed successfully but the job-level status never finalized, staying `pending`
+     against an already-`completed` parent run. Not a repo defect; resolved with `gh run
+     rerun`, not more waiting.
+- **All required checks green on PR #114**: `pr-title`, `tofu-fmt`, `tofu-validate`, `tflint`,
+  `secrets-scan`, `zizmor`, `tofu-plan`. Only `checkov` (non-required, pre-existing expected
+  findings) is red — `mergeStateStatus: UNSTABLE` for that reason alone; `mergeable: true`.
 
 ## Next
 
@@ -53,14 +51,19 @@ review and merge.
       create verbs under the new apply role.** Capture the run link.
    2. Dispatch `destroy-ai-lab` (typed confirm phrase, human watches live per BR-D25) —
       **exercises the destroy verbs under the new apply role.** Capture that run link too.
-   3. Record both run links per Task 4's acceptance criteria ("each evidenced by the run,
-      never inferred from the file").
+   3. Record both run links per Task 4's acceptance criteria.
 3. **Then PR B** (Task 4 step 4: delete `bootstrap/`'s escalation-capable role +
    `state_access_policy` — human apply) and **PR C** (step 5: require `tofu-plan` as the
    seventh check).
 
-**Model: `sonnet` / coder** — the design is settled; this is driving a defined verify cycle,
-not planning.
+**Separately, outside S2:** the user wants `SD` (the devcontainer sprint) corrected and
+started. Its "deferred, Docker unavailable" banner is **stale** — Docker has always been
+available on this workstation. **Correct `sprints/SD_devcontainer/sprint_plan.md`'s banner in
+its own small PR** before resuming SD's tasks; don't fold that correction into S2 work.
+Devcontainer adoption is now wanted as standard practice going forward, not a one-off.
+
+**Model: `sonnet` / coder** for both threads — the S2 design is settled, and the SD banner
+correction is mechanical.
 
 ## Open gates and blockers
 
@@ -73,14 +76,21 @@ destroy confirm phrase). Do not begin step 3 unattended.
 check can *see* `encryption.tf`'s `enforced = true`, so deleting it passes all six checks
 green. Details in `.ai/state.json`'s `known_followups`.
 
-**New process note:** the action classifier in this session blocked the agent from running
-`gh secret set` directly — secret rotation needs the human to run the handed-over commands
-themselves. Not repo-specific; may recur.
+**New process notes, worth carrying forward:**
+- The action classifier blocks some agent-run commands in this repo/session (`gh secret set`
+  observed) — secret rotation needs the human to run handed-over commands directly.
+- **PowerShell + piping a value to a native exe's stdin can silently inject a UTF-8 BOM** that
+  `.Trim()` won't remove. Use `--body`/equivalent argument-passing for exact-match values
+  (secrets, tokens) instead of piping.
+- `tofu init -lockfile=readonly` needs the committed lockfile to carry hashes for **every**
+  platform CI runs on, not just the authoring workstation's.
 
 ## Pointers
 
 - `docs/hardening_roadmap.md` — reference of record and threat model. Touched this session
   only for the S2-T2/S2-T4 misattribution fix; no scope or decision change.
-- `sprints/S2_identity_least_privilege/sprint_plan.md` — Tasks 0–3 done; Task 4 PR A shipped,
+- `sprints/S2_identity_least_privilege/sprint_plan.md` — Tasks 0–3 done; Task 4 PR A green,
   awaiting merge.
-- [PR #114](https://github.com/glunk-works/bedrock-serverless-rag/pull/114) — Task 4 PR A, open.
+- `sprints/SD_devcontainer/sprint_plan.md` — needs its stale deferred-banner corrected.
+- [PR #114](https://github.com/glunk-works/bedrock-serverless-rag/pull/114) — Task 4 PR A,
+  all required checks green.

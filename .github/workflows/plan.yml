@@ -95,20 +95,6 @@ jobs:
             exit 1
           fi
 
-      # TEMPORARY diagnostic round 2 -- prints only PASS/FAIL and a hex dump of the first 16
-      # bytes (never the account id, role name, or full ARN -- BR-D4). Removed once confirmed.
-      - name: "DEBUG: hex dump of AWS_OIDC_ROLE_ARN's first bytes"
-        env:
-          ARN1: ${{ secrets.AWS_OIDC_ROLE_ARN }}
-        run: |
-          set -euo pipefail
-          if [[ "$ARN1" =~ ^arn:aws:iam::[0-9]{12}:role/ ]]; then
-            echo "AWS_OIDC_ROLE_ARN: PASS (len=${#ARN1})"
-          else
-            echo "AWS_OIDC_ROLE_ARN: FAIL (len=${#ARN1})"
-          fi
-          printf '%s' "$ARN1" | head -c 16 | xxd
-
       # F-4 defense-in-depth -- see the identical step in deploy.yml's jobs. Derived from the
       # SAME expression passed to role-to-assume below, never hardcoded.
       - name: Register bare account id for log masking

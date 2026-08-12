@@ -358,7 +358,7 @@ already written into these plans and every `Closes:` line in the inventory.*
 | **S3+S4** | Data-plane and RAG posture *(merged, ~half the tasks)* | F6–F12, F22–F26, F28 | planned |
 | **S5** | Python cleanup *(four items, not a supply-chain programme)* | F29, F31, F32 | planned |
 | **S6** | Documentation and operational readiness *(two runbooks)* | #8, BR-D13, F53 (the README half) | planned |
-| **SD** | Development container | — (capability; records BR-D15) | **deferred** |
+| **SD** | Development container | — (capability; records BR-D15) | ~~**deferred**~~ **planned — un-deferred 2026-08-11, the Docker precondition was never true** |
 
 **`MW` is letter-prefixed** for the same reason `ST` is: it was inserted after the numbering
 was set, and renumbering costs more than it buys. It is **not** parallel — it is a hard
@@ -454,13 +454,19 @@ sequence point, and the reason it exists is below.
 > `bounty_infra_plan_policy` untouched; **it would not be safe to Deny findings access on
 > bounty-infra's apply role, which legitimately writes them.**
 
-**`SD` is deferred, not optional.** It is blocked on Docker, which the workstation does not
+~~**`SD` is deferred, not optional.** It is blocked on Docker, which the workstation does not
 have, so it is undeliverable today regardless of merit — that is a fact, not a judgement, and
 it does not need re-arguing each sprint. On the merits it also carries a permanent obligation
 (BR-D15: every pin kept *equal* to CI's, forever, on every future bump) against the two pains
 actually observed — CRLF, already fixed by `.gitattributes` in S0-T5, and the `-backend=false`
 wrinkle, already two lines in `CLAUDE.md`. **Precondition to revisit: Docker on the
-workstation.** If it is ever picked up, it must not gate S5.
+workstation.** If it is ever picked up, it must not gate S5.~~ **Corrected 2026-08-11: `SD` is
+no longer deferred.** The Docker precondition above was never true — Docker has always been
+available on this workstation — so there was never a real blocker to revisit. The "on the
+merits" reasoning is superseded, not revived: the operator has decided devcontainer adoption
+is standard practice, so `SD` resumes at Task 1, run in parallel with the active sprint as its
+own plan always specified. See `sprints/SD_devcontainer/sprint_plan.md`'s own banner for the
+full correction.
 
 Plans live at `sprints/S<N>_<slug>/sprint_plan.md`. Each carries a **Critical review**
 section recording the security, logic, and execution objections raised against it during

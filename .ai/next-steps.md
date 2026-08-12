@@ -6,97 +6,136 @@ Regenerate this at the end of every working session.
 
 ## Now
 
-**`blocked` — `S2` (Identity, state reconciliation, and `bootstrap/` retirement).**
-Tasks **0 (0a/0b/0c), 1, 2, 3 are done, applied, and verified.** **Task 4 is scoped and
-blocked** on an upstream apply (below).
+**GitHub MCP server evaluation is the priority for the next session**, per the user's own
+request. `SD` Tasks 1–2 are done (PR #117 merged, PR #118 open); `SD` Task 3–4 and `S2` Task 4's
+remaining human-gated sub-steps continue as parallel threads, neither dropped.
 
-## ⚠️ The incoming cursor pointed at already-completed work — corrected
+⚠️ **If `/way-of-working:resume` itself fails to invoke** (`Unknown skill`), the `way-of-working`
+plugin is still disconnected from a mid-session outage today — try `/reload-plugins` or
+restarting Claude Code first. This file was written by hand this session because the handoff
+skill itself stopped working; treat that as a live process problem, not a sign the cursor is
+unreadable.
 
-The previous cursor said *"the real next action is Task 0, not Task 4 … Scope Task 0a first."*
-**Wrong, in the direction that wastes a session redoing applied infrastructure.** Re-measured:
+## Just done
 
-- **Task 0a/0b** landed and were verified — this repo's own cursor-sync **PR #102**.
-- **Task 0c**: `glunk-works/global-bootstrap#11` — **MERGED 2026-08-10**, and **applied**.
-- **Confirmed in live AWS**: both roles exist — `github-actions-bedrock-serverless-rag` and
-  `…-plan` (names only, BR-D4). Apply role's operator is **`StringEquals`** (**F2 closed at
-  the IAM layer**), subjects exactly `ref:refs/heads/main` + `environment:production`, **no
-  `:pull_request`**. Plan role trusts `:pull_request` **and** `:ref:refs/heads/main`
-  (**F56 gap (a) closed**). Both carry the BR-D27 ID-qualified prefix.
-
-**The prior session's evidence was real but misread**: it ran `gh secret list`, found no
-`AWS_PLAN_ROLE_ARN`, and concluded the upstream role didn't exist. That secret is *this
-repo's* wiring, which **Task 4 step 1 creates**. **A missing consumer is not a missing
-producer.**
-
-## Just done — Task 4 scoped, and its real blocker found and fixed upstream
-
-- **Task 4 split agreed (3 PRs)**: **PR A** = step 1 secrets + step 2 `plan.yml` +
-  `ci.yml` header amendment → **step 3 verification cycle** (no PR) → **PR B** = step 4
-  delete `bootstrap/`'s role + `state_access_policy` (**F1**) + the Task 3 bridge (human
-  apply) → **PR C** = step 5 require `tofu-plan` as the seventh check.
-- 🔴 **Found the actual live break in step 1 — and it is NOT the one the sprint plan
-  documents.** The plan warns the break would be a trust-policy subject mismatch; that is
-  closed. The real one: **the plan role cannot complete a `tofu init` at all.** OpenTofu's
-  `aws_kms` key provider calls **`kms:GenerateDataKey` unconditionally** on every operation
-  (measured from its source — `internal/encryption/keyprovider/aws_kms/provider.go`'s
-  `Provide()`; `Decrypt` is the *conditional* call). The plan role had only
-  `kms:Decrypt`/`kms:DescribeKey`. Creating `secrets.AWS_PLAN_ROLE_ARN` flips
-  `tofu-plan-main`'s `||` fallback onto it → **every merge to `main` would fail at init.**
-- **Fixed upstream: `glunk-works/global-bootstrap#12` — OPEN, awaiting human review +
-  hand-apply.** Baseline `No changes.`; with the fix `0 to add, 1 to change, 0 to destroy`
-  (`aws_iam_policy.bedrock_rag_plan_policy` only). No sibling project's policy is in the
-  change set. Not a write path — writing state needs `s3:PutObject`, which the plan role
-  still lacks.
-- **⚠️ This corrects a previous `security-critic` recommendation.** The verb was dropped on
-  a critic's advice; it reads as correct least-privilege and is tool-breaking. The
-  superseded reasoning is retained struck-through in the upstream file with a
-  do-not-re-tighten warning.
-- **No critic pass ran on the upstream diff** — offered and declined in favour of handing
-  off. On the record.
-- Also fast-forwarded a stale local `main` to `c06856d` (cursor-sync PR #112 had merged) and
-  pruned 2 squash-merged branches. Ruleset healthy (4 rule types, 6 required checks).
+- **SD Task 1 merged** ([PR #117](https://github.com/glunk-works/bedrock-serverless-rag/pull/117)):
+  `.devcontainer/Dockerfile`, pinned tofu/tflint/checkov/gitleaks/zizmor. Two rounds of
+  `security-critic`+`architect` review (before those agents went unavailable — see below) found
+  and fixed a mutable base-image tag, a false claim that had left `tflint` — a **required
+  check** — floating unpinned, and an overclaiming checkov-verification comment. Also
+  reconciled `tofu_version` across all 6 `setup-opentofu` occurrences in
+  `ci.yml`/`plan.yml`/`deploy.yml` and added `tflint_version` to `ci.yml`.
+- **SD Task 2 open** ([PR #118](https://github.com/glunk-works/bedrock-serverless-rag/pull/118)):
+  `.devcontainer/devcontainer.json` + generated `devcontainer-lock.json`. Live-verified
+  end-to-end with the `devcontainer` CLI on this workstation — build/up/exec, AWS mount
+  resolves, `git status` clean, `aws sts get-caller-identity` fails with the *expected*
+  "token expired" error rather than a missing-mount error. **Found a real gotcha**: invoking
+  the `devcontainer` CLI via `npx` on Windows injects a synthetic `HOME` env var that corrupts
+  the `${localEnv:HOME}${localEnv:USERPROFILE}` mount pattern — a test-harness artifact, not a
+  `devcontainer.json` defect. Invoke the CLI's own entry point directly (not through `npx`)
+  when testing this kind of cross-platform path logic.
+- **SD banner correction merged** ([PR #116](https://github.com/glunk-works/bedrock-serverless-rag/pull/116)):
+  the sprint was never actually blocked on Docker; corrected across `CLAUDE.md`, the roadmap,
+  and the sprint plan.
+- **`/doctor` cleanup**: disabled the unused `aws-core` plugin (0 usage, 19 skills + a
+  `PreToolUse` hook on every `Bash` call + an MCP proxy, zero benefit in this repo) via
+  `.claude/settings.local.json` — local, gitignored, not part of any commit.
+- **CLAUDE.md context management, evaluated and partly landed**
+  ([PR #119](https://github.com/glunk-works/bedrock-serverless-rag/pull/119), open): a bigger
+  restructuring (moving ~21k chars into path-scoped `.claude/rules/*.md` files) was proposed,
+  **built as a real test case, and empirically disproven** — a fresh session's `/context` still
+  counted the moved content even though nothing under the scoped path (`.github/workflows/**`)
+  had been touched, matching an open upstream bug
+  ([anthropics/claude-code#16299](https://github.com/anthropics/claude-code/issues/16299)).
+  Fully reverted, byte-identical. Landed the smaller win that doesn't depend on that broken
+  mechanism instead: moved a ~1.8k-char task-specific runbook (local `tofu plan`/`apply`
+  walkthrough + Git-Bash-`gpg` debugging) into `.claude/skills/tofu-local-plan/SKILL.md`.
+- ⚠️ **Mid-session: the `way-of-working` plugin's custom review agents disappeared**
+  (`architect`/`coder`/`docs-consistency`/`security-critic` — confirmed twice via direct probe,
+  `Unknown agent type`). By session end **the plugin's skills stopped working too**
+  (`way-of-working:handoff` itself: `Unknown skill`) — this reads as a broader
+  plugin-connectivity problem, not just the agents. All PR work after the agents disappeared
+  used a self-review-and-ship fallback (asked the user first each time). This cursor file was
+  written by hand, replicating `/way-of-working:handoff`'s own mechanics from memory.
 
 ## Next
 
-1. **Human: review and apply `glunk-works/global-bootstrap#12`** (hand-applied; that repo
-   has no CI and — worth noting separately — **no branch protection at all**).
-2. **Verify the verb landed** before anything else:
-   `aws iam get-policy-version` on `glunk-works-bedrock-serverless-rag-plan-readonly`,
-   `StateEncryptionKeyReadAccess` must list `kms:GenerateDataKey`. Read it from AWS, never
-   from the upstream HCL.
-3. **Then PR A.** Full step-by-step and the 8 inherited security constraints are in
-   `sprints/S2_identity_least_privilege/sprint_plan.md` `### Task 4` (re-derive the line
-   range with `grep -n '^### Task 4'`). Key ones: `plan.yml` is a **new third workflow
-   file** (it can live in neither `ci.yml` — uncredentialed by construction — nor
-   `deploy.yml` — no `pull_request` trigger); it points at the **plan** role from its first
-   commit; `tofu plan -lock=false`; no `name:` override; summarize to
-   `$GITHUB_STEP_SUMMARY`, never an artifact.
+**Priority 1 — GitHub MCP server evaluation (new thread, starting fresh next session):**
 
-⚠️ **Also correct the sprint plan's step 3 sub-order in PR A** (dated banner, per the
-banner-vs-body convention): it is written *destroy → merge/apply → destroy* assuming "the
-lab already up from Task 2". **The lab is torn down**, so the first destroy dispatch is a
-no-op proving nothing. Correct order from here: **PR plan green → merge/apply (`12 to add`,
-create verbs) → destroy dispatch (destroy verbs) → down.**
+Research already done this session, don't re-derive it:
+- `github/github-mcp-server` covers `pull_requests`/`actions`/`issues`/`repos` toolsets well,
+  including `get_job_logs` — would replace the `gh run view --log | grep` pattern used
+  repeatedly this session to find resolved CI tool versions.
+- Supports a `--read-only` flag/env var that skips every write tool — mirrors this repo's own
+  plan-role/apply-role philosophy.
+- **Does NOT expose branch protection rulesets or repo secrets/variables** — `gh` CLI stays
+  needed for those, in particular the `/way-of-working:resume` ruleset-drift check.
+- Prefer local Docker deployment (`ghcr.io/github/github-mcp-server`, digest-pinned per this
+  repo's own supply-chain convention) with a narrowly-scoped PAT over the remote
+  `api.githubcopilot.com/mcp` endpoint, which is beta/rollout-gated.
+- Net assessment: a real but modest win, not a `gh` replacement.
 
-⚠️ **No other PR may be open across this cutover** (`strict_required_status_checks_policy`).
+Decide whether to actually add it, and if so scope/pin it properly.
 
-**Model: `sonnet` / coder** — the design is settled; PR A is specified implementation.
-**`/way-of-working:critic-gate` is mandatory on PR A** (security-critic + architect): it puts
-a credentialed job back on `pull_request` for the first time since `S1b`-T2 closed F3's
-exploitable instance.
+**Priority 2 — SD, parallel:**
+
+1. Task 3: run every `gates.green` entry plus `tflint --recursive`/`checkov -d .`/
+   `zizmor .github/workflows/` **inside the container from a fresh clone** (not the
+   host-mounted workspace — its `.terraform/` is already initialized against the S3 backend).
+   Compare verdicts to the same-commit CI run; record any divergence in
+   `docs/hardening_roadmap.md`. Full spec:
+   `grep -n '^- \*\*Task 3' -A 60 sprints/SD_devcontainer/sprint_plan.md`.
+2. Task 4: `.devcontainer/README.md`, a BR-D15 entry in the roadmap, a `CLAUDE.md` pointer, a
+   comment-only note in `.ai/project.yml`.
+
+**Priority 3 — S2, parallel, human-gated:**
+
+Task 4 step 3's verify cycle. **Sub-step 3.1 (a PR plan job green on the plan role) is already
+satisfied** — evidenced by PR #116's `plan.yml` run
+[31504008599](https://github.com/glunk-works/bedrock-serverless-rag/actions/runs/31504008599),
+no re-proof needed. Sub-steps 3.2 (merge → `tofu-apply` plans `12 to add` → needs your
+`production` Environment approval click) and 3.3 (dispatch `destroy-ai-lab` with the typed
+confirm phrase, watch it live per BR-D25) have not started — declined this session pending
+readiness. Full spec: `grep -n '^### Task 4' -A 200 sprints/S2_identity_least_privilege/sprint_plan.md`.
+
+**Model: `sonnet` / coder** for all three threads.
 
 ## Open gates and blockers
 
-**HITL Gate: OPEN.** `global-bootstrap#12` must be reviewed and hand-applied by a human
-before any Task 4 implementation begins — PR A's first act creates the secret that flips CI
-onto the role that PR fixes. Do not start unattended.
+**HITL Gate: OPEN, unchanged from last session — S2 thread only.** Task 4 step 3's remaining
+sub-steps (3.2 Environment approval, 3.3 destroy confirm phrase) are human-gated pipeline
+actions. Neither the SD thread nor the GitHub-MCP-evaluation thread has an open gate.
 
-**Not filed, deliberately** (`security-critic` #1, LOW, carried from Task 2): no required
-check can *see* `encryption.tf`'s `enforced = true`, so deleting it passes all six checks
-green. Details in `.ai/state.json`'s `known_followups`.
+**Not filed, deliberately** (carried): `security-critic`'s LOW finding that no required check
+can see `encryption.tf`'s `enforced = true` line. `global-bootstrap` has no CI/branch
+protection at all — worth an issue, not filed. `F61` (`docs/hardening_roadmap.md`) named both
+`setup-opentofu` and `setup-tflint` floating on "latest" as a required-check hazard — SD Task 1
+closed both halves (explicit `tofu_version`/`tflint_version` everywhere) but the roadmap row
+isn't updated yet; do it next time that file is touched.
+
+**Process notes worth carrying forward:**
+- **`.claude/rules/*.md` `paths:` frontmatter does not actually scope loading** on this
+  installed Claude Code version — verified empirically, matches
+  [anthropics/claude-code#16299](https://github.com/anthropics/claude-code/issues/16299).
+  Saved to memory (`claude-rules-path-scoping-broken.md`); re-check the issue's status before
+  trying this again.
+- **Subagents inherit a stale, session-start snapshot of `CLAUDE.md`**, not a live read —
+  confirmed by a subagent quoting pre-edit content verbatim, explicitly labeled as the live
+  file. Don't use a same-session subagent to answer "what does a fresh session see" — only a
+  genuinely new process is valid for that.
+- Invoking a Node CLI via `npx` on Windows injects a synthetic `HOME` env var absent from the
+  parent shell — breaks `${localEnv:HOME}${localEnv:USERPROFILE}`-style cross-platform path
+  logic. Invoke the tool's own entry point directly when testing this.
+- PowerShell piping a value to a native exe's stdin can silently inject a UTF-8 BOM that
+  `.Trim()` won't remove. Use `--body`/equivalent argument-passing for secrets/exact-match
+  values instead of piping.
+- `tofu init -lockfile=readonly` needs the committed lockfile to carry hashes for **every**
+  platform CI runs on, not just the authoring workstation's.
 
 ## Pointers
 
-- `docs/hardening_roadmap.md` — reference of record and threat model. Unchanged this session.
-- `sprints/S2_identity_least_privilege/sprint_plan.md` — Tasks 0–3 done; Task 4 next.
-- `glunk-works/global-bootstrap#12` — the open upstream blocker.
+- `docs/hardening_roadmap.md` — reference of record and threat model. F61 partial-closure note
+  above; unchanged otherwise this session.
+- `sprints/SD_devcontainer/sprint_plan.md` — Tasks 1–2 done, Task 3–4 next.
+- `sprints/S2_identity_least_privilege/sprint_plan.md` — Task 4 step 3 sub-step 3.1 satisfied,
+  3.2/3.3 pending human action, unchanged.

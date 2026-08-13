@@ -1,0 +1,36 @@
+{
+  "name": "bedrock-serverless-rag",
+  "build": {
+    "dockerfile": "Dockerfile"
+  },
+  "features": {
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/aws-cli:1": {}
+  },
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "hashicorp.terraform",
+        "ms-python.python",
+        "charliermarsh.ruff",
+        "GitHub.vscode-pull-request-github",
+        "anthropic.claude-code"
+      ]
+    }
+  },
+  "remoteUser": "vscode",
+  // Host AWS config + cached SSO tokens, read-only -- `aws sso login` state on the
+  // host is usable inside without copying credentials into the image (SD sprint
+  // Security Considerations: no credential material baked in). Read-only so the
+  // container cannot write a profile the host would later trust. The
+  // `${localEnv:HOME}${localEnv:USERPROFILE}` concatenation is the documented
+  // cross-platform mount pattern -- exactly one of the two is set on any given
+  // host (verified on this workstation: HOME is empty, USERPROFILE resolves).
+  "mounts": [
+    "source=${localEnv:HOME}${localEnv:USERPROFILE}/.aws,target=/home/vscode/.aws,type=bind,consistency=cached,readonly"
+  ],
+  // Do NOT add INFISICAL_*, AWS_ACCESS_KEY_ID, or any TF_VAR_ secret here as a
+  // literal -- if one is ever needed, reference ${localEnv:...} so the value
+  // stays on the host and is never baked into container config.
+  "postCreateCommand": "git config --global --add safe.directory ${containerWorkspaceFolder} && echo 'Ready: tofu, tflint, checkov, gitleaks, zizmor, jq, yq pinned -- see .devcontainer/Dockerfile'"
+}

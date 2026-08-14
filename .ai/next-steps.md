@@ -6,85 +6,67 @@ Regenerate this at the end of every working session.
 
 ## Now
 
-**`SD`, `implementing`.** The GitHub MCP evaluation thread is **closed — the server was added**.
-`SD` Tasks 1–2 are merged; Tasks 3–4 are the active work. `S2` Task 4 continues as a parallel,
-human-gated thread.
-
-⚠️ **Merge [PR #122](https://github.com/glunk-works/bedrock-serverless-rag/pull/122) and then
-restart Claude Code before doing anything else.** Both the `v0.6.0` plugin and the new GitHub
-MCP tools need a fresh process — this session ran on cached `0.5.1` with the MCP server
-registered but not loaded.
+**`SD`, `implementing`.** Task 3 is **done and merged**. Task 4 is the active work. `S2` Task 4
+continues as a parallel, human-gated thread, unchanged.
 
 ## Just done
 
-- **GitHub MCP server added** — `github/github-mcp-server` v1.9.0, digest-pinned, authenticating
-  as a **GitHub App** (`bedrock-rag-mcp-reader`) with a read-only PEM mounted into the container.
-  Registered at **`local` scope; nothing committed**. Surface is 6 read-only tools
-  (`get_job_logs`, `pull_request_read`, `search_pull_requests`, `actions_get`, `actions_list`,
-  `list_pull_requests`), verified live — `--read-only` measurably strips 14 write tools
-  (33 → 19), `--lockdown-mode` is on, and the installation grant is `actions`/`contents`/
-  `metadata`/`pull_requests` all `:read`, `repository_selection: selected`.
-- **Three credential designs were rejected before that one**, and the reasoning is the point:
-  a PAT in a persistent env var (plaintext in `HKCU\Environment`, inherited by every child
-  process); a PowerShell+DPAPI wrapper (built and verified, then deleted — Windows-bound by
-  construction); and **OAuth** (cleanest storage — in-memory, PKCE, nothing on disk — but
-  GitHub OAuth scopes are *account-wide*, every tool needs `repo`, and `--read-only` filters
-  only the *tool list*, not the token). **Principle: bound the credential's authority first,
-  then protect its storage.**
-- **`.mcp.json` was written and then deleted deliberately** — a committed project-scope config
-  would ship **broken** into the devcontainer (no `pwsh`, no docker-in-docker, `USERPROFILE`
-  empty on Linux) and to every contributor on a public repo.
-- **`way-of-working` pinned to `v0.6.0`** ([PR #122](https://github.com/glunk-works/bedrock-serverless-rag/pull/122),
-  **open**, all 6 required checks green). Root-caused why the earlier bump never took effect:
-  install records duplicate by **drive-letter case** (`c:\` on `0.5.1`, `C:\` on `0.6.0`), and
-  `claude plugin update -s project` matched the upper-case record and reported a **false green**.
-  Corrected by hand; reported at [claude-workbench#36](https://github.com/glunk-works/claude-workbench/pull/36#issuecomment-5293546340).
-- **Canary re-checked:** [anthropics/claude-code#16299](https://github.com/anthropics/claude-code/issues/16299)
-  is still OPEN, no fix, last activity 2026-04-15 — `.claude/rules` path-scoping stays off the table.
+- **SD Task 3 — container-vs-CI comparison.** Rebuilt the devcontainer image from the committed
+  Dockerfile (zero cache misses — confirms parity with what's on disk), ran `gates.green` plus
+  `tflint --recursive` / `checkov -d .` / `zizmor .github/workflows/` against a **fresh clone**
+  (not the host-mounted workspace), and compared every verdict to CI's job conclusions on the
+  tree-identical commit (`5d21932` / PR #123's head `c0e0fd1`). Everything matched CI except a
+  **bare `tflint --recursive`** — the exact command the sprint plan's own prose names — which
+  drops the `--config` flag `ci.yml` passes explicitly and false-positives on `bootstrap/`'s
+  pre-existing missing `required_version`. Recorded as **F62** (Low — not a tool-pin defect,
+  a documentation gap Task 4's README must close).
+- **`/way-of-working:critic-gate` ran** (`docs-consistency`; `review.ci_gate` is `null` so this
+  is the only critic look the diff gets): round 1 found two real defects — F62 had misattributed
+  `bootstrap/`'s gap as "already-tracked" when the comment it cited says the opposite, and a
+  pre-existing blank line (from an earlier `S1b`-T7 edit) had pushed F60/F61 outside the
+  markdown table, which F62's own row would have extended. Both fixed; round 2 converged clean.
+- **Shipped:** [PR #124](https://github.com/glunk-works/bedrock-serverless-rag/pull/124),
+  merged at `8c2ec46`.
+- **v0.6.0 canary satisfied.** This whole session (`/way-of-working:resume` →
+  implement → `/way-of-working:critic-gate` → `/way-of-working:ship` → `/way-of-working:handoff`)
+  ran under a **loaded** `way-of-working` v0.6.0 with no defect found —
+  [claude-workbench#36](https://github.com/glunk-works/claude-workbench/pull/36) can be closed
+  next time that repo is touched.
 
 ## Next
 
 **Model: `sonnet` / coder.**
 
-1. **SD Task 3** — run every `gates.green` entry plus `tflint --recursive` / `checkov -d .` /
-   `zizmor .github/workflows/` **inside the container from a fresh clone** (not the
-   host-mounted workspace — its `.terraform/` is already initialized against the S3 backend).
-   Compare verdicts to the same-commit CI run; record divergence in `docs/hardening_roadmap.md`.
-   **`checkov` is expected to fail** — it fails identically on #118/#119/#120/#122 and is
-   deliberately not a required check (F6/F7). A container-vs-CI *divergence* is the finding.
-   Spec: `grep -n '^- \*\*Task 3' -A 60 sprints/SD_devcontainer/sprint_plan.md`.
-2. **SD Task 4** — `.devcontainer/README.md`, BR-D15 in the roadmap, a `CLAUDE.md` pointer, a
-   comment-only note in `.ai/project.yml`. While in the roadmap, also close two carried items:
-   the **F61 row** (SD Task 1 closed *both* halves) and a **decision record for the GitHub MCP
-   server** (App auth, why not PAT/OAuth, the digest pin, devcontainer incompatibility).
-3. **S2 Task 4 step 3** — sub-steps 3.2/3.3, unchanged, **human-gated**.
-
-Also worth doing next session: the **`v0.6.0` canary run** upstream owes
-`claude-workbench#36` a full `/way-of-working:resume` → `/way-of-working:ship` pass against a
-*loaded* `v0.6.0`; stage 2 fan-out is waiting on it.
+1. **SD Task 4** — `.devcontainer/README.md` (what's in the image and why, how credentials
+   reach the container, the `.terraform/` fresh-clone wrinkle, how to bump a pin), **BR-D15**
+   in the roadmap, a `CLAUDE.md` § Commands pointer at the container, and a comment-only note
+   in `.ai/project.yml` (no new schema key). Spec:
+   `grep -n '^- \*\*Task 4' -A 20 sprints/SD_devcontainer/sprint_plan.md`.
+   While in the roadmap, also close two carried items:
+   - **F61's row is now stale** — this session's critic-gate confirmed PR #117 already pins
+     `tofu_version` (`1.12.5`) and `tflint_version` (`0.64.0`) everywhere in `ci.yml`/
+     `plan.yml`/`deploy.yml`. Close it.
+   - **GitHub MCP server decision record** — still absent from the roadmap (confirmed by grep
+     this session). App auth (`bedrock-rag-mcp-reader`), why not PAT/OAuth, the digest pin,
+     devcontainer incompatibility.
+2. **S2 Task 4 step 3** — sub-steps 3.2/3.3, unchanged, **human-gated**.
 
 ## Open gates and blockers
 
-**HITL Gate: OPEN — `S2` thread only**, unchanged for three sessions. Task 4 step 3's sub-steps
-3.2 (`production` Environment approval click) and 3.3 (`destroy-ai-lab` typed confirm phrase,
-watched live per BR-D25). **Neither SD Task 3 nor Task 4 has a gate — both may auto-start.**
+**HITL Gate: NONE OPEN for SD's queue** — Task 4 has no gate, safe to auto-start.
+Separately, **still OPEN: the `S2` thread**, unchanged for four sessions now — Task 4 step 3's
+sub-steps 3.2 (`production` Environment approval click) and 3.3 (`destroy-ai-lab` typed confirm
+phrase, watched live per BR-D25). Do not begin those two unattended.
 
-**Process notes new this session** (both saved to memory):
-- **Git Bash rewrites Unix-looking absolute paths into Windows paths.** It broke
-  `gh api /orgs/...` loudly *and* silently corrupted a container-internal path in a persisted
-  MCP config — exit 0, wrong value on disk. Prefix `MSYS_NO_PATHCONV=1` and **verify what was
-  actually recorded**.
-- **PowerShell swallows a bare `--`** before a native command, and `--%` doesn't help against a
-  shim like `claude`. Run those from Bash.
-- **Untested repair path:** the documented `marketplace add @ref` / `uninstall` / `install`
-  sequence from the *lower-case* cwd may fix the case-duplicated plugin record through
-  supported commands — try that before hand-editing next time. Backup left at
-  `~/.claude/plugins/installed_plugins.json.bak` (harmless, delete at will).
+**Process note new this session:** `docker run -v ... -w /path` under Git Bash hits the same
+MSYS path-conversion trap already known for `gh api` — it mangled a bind-mount path and errored
+loudly. `MSYS_NO_PATHCONV=1` fixed it immediately; same root cause as the existing memory, new
+call site.
 
 ## Pointers
 
-- `docs/hardening_roadmap.md` — reference of record and threat model. Untouched this session;
-  two edits queued above.
-- `sprints/SD_devcontainer/sprint_plan.md` — Tasks 1–2 done, Tasks 3–4 next.
+- `docs/hardening_roadmap.md` — reference of record and threat model. F62 landed this session;
+  two edits (F61, GitHub MCP record) queued above.
+- `sprints/SD_devcontainer/sprint_plan.md` — Tasks 1–3 done, Task 4 next.
 - `sprints/S2_identity_least_privilege/sprint_plan.md` — Task 4 step 3: 3.1 satisfied,
   3.2/3.3 pending human action.

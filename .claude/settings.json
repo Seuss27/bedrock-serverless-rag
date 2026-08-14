@@ -1,17 +1,4 @@
 {
-  "extraKnownMarketplaces": {
-    "claude-workbench": {
-      "source": {
-        "source": "github",
-        "repo": "glunk-works/claude-workbench",
-        "ref": "v0.5.0"
-      }
-    }
-  },
-  "enabledPlugins": {
-    "way-of-working@claude-workbench": true,
-    "aws-core@claude-plugins-official": true
-  },
   "permissions": {
     "deny": [
       "Bash(gh pr merge:*)",
@@ -43,5 +30,18 @@
       "Bash(gh api --method DELETE:*)",
       "PowerShell(gh api --method DELETE:*)"
     ]
+  },
+  "enabledPlugins": {
+    "aws-core@claude-plugins-official": true,
+    "way-of-working@claude-workbench": true
+  },
+  "extraKnownMarketplaces": {
+    "claude-workbench": {
+      "source": {
+        "source": "github",
+        "repo": "glunk-works/claude-workbench",
+        "ref": "v0.6.0"
+      }
+    }
   }
 }
